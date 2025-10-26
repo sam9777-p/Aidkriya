@@ -47,7 +47,7 @@ class _SignInScreenState extends State<SignInScreen> {
       final user = userCredential.user;
       if (user != null) {
         final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
-        final role = doc.data()?['role'] ?? 'walker';
+        final role = doc.data()?['role'] ?? 'Walker';
 
         if (role == 'Walker') {
           Navigator.pushReplacement(
@@ -116,7 +116,7 @@ class _SignInScreenState extends State<SignInScreen> {
           });
         }
 
-        final role = snapshot.data()?['role'] ?? 'walker';
+        final role = snapshot.data()?['role'] ?? 'Walker';
 
         if (role == 'Walker') {
           Navigator.pushReplacement(
