@@ -1,9 +1,21 @@
+import 'package:aidkriya_walker/walker_home.dart';
+import 'package:aidkriya_walker/wanderer_home.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'profile_setup_screen.dart';
 import 'role_setup_screen.dart';
 
 class SetupFlowScreen extends StatefulWidget {
-  const SetupFlowScreen({super.key});
+  final String fullNameFromSignup;
+  final String userId;
+  final String email;
+
+  const SetupFlowScreen({
+    super.key,
+    required this.fullNameFromSignup,
+    required this.userId,
+    required this.email,
+  });
 
   @override
   State<SetupFlowScreen> createState() => _SetupFlowScreenState();
@@ -12,21 +24,35 @@ class SetupFlowScreen extends StatefulWidget {
 class _SetupFlowScreenState extends State<SetupFlowScreen> {
   int _currentStep = 1;
 
-  final primary = const Color(0xFFA8D8B9);
-  final accent = const Color(0xFFE0F2E9);
-  final backgroundDark = const Color(0xFF112117);
+  // store collected data
+  Map<String, dynamic> _profileData = {};
 
-  void _goToNextStep() {
-    setState(() {
-      _currentStep++;
-    });
+  void _saveProfileData(Map<String, dynamic> data) {
+    _profileData = data;
   }
 
-  void _goBack() {
-    if (_currentStep > 1) {
-      setState(() => _currentStep--);
+  void _saveRoleAndFinish(String role) async {
+    final userDoc = FirebaseFirestore.instance.collection('users').doc(widget.userId);
+
+    await userDoc.set({
+      ..._profileData,
+      'email': widget.email,
+      'role': role,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+
+    if (role == "Walker") {
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => const WalkerHome()),
+            (route) => false,
+      );
     } else {
-      Navigator.of(context).maybePop();
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => const WandererHome()),
+            (route) => false,
+      );
     }
   }
 
@@ -35,16 +61,21 @@ class _SetupFlowScreenState extends State<SetupFlowScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: isDark ? backgroundDark : Colors.white,
+      backgroundColor: isDark ? const Color(0xFF112117) : Colors.white,
       body: SafeArea(
         child: Column(
           children: [
             const SizedBox(height: 12),
-            // Header Row
             Row(
               children: [
                 IconButton(
-                  onPressed: _goBack,
+                  onPressed: () {
+                    if (_currentStep > 1) {
+                      setState(() => _currentStep--);
+                    } else {
+                      Navigator.of(context).maybePop();
+                    }
+                  },
                   icon: const Icon(Icons.arrow_back),
                 ),
                 Expanded(
@@ -53,68 +84,28 @@ class _SetupFlowScreenState extends State<SetupFlowScreen> {
                         ? "Let's Get to Know You"
                         : 'Choose Your Role',
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
-                        fontSize: 20, fontWeight: FontWeight.w700),
+                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
                   ),
                 ),
                 const SizedBox(width: 48),
               ],
             ),
 
-            // Step Indicator
-            Padding(
-              padding:
-              const EdgeInsets.symmetric(horizontal: 16.0, vertical: 10),
-              child: Row(
-                children: [
-                  Text(
-                    'Step $_currentStep of 2',
-                    style: const TextStyle(
-                        fontSize: 13, fontWeight: FontWeight.w600),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Stack(
-                      children: [
-                        Container(
-                          height: 8,
-                          decoration: BoxDecoration(
-                            color: accent,
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                        ),
-                        FractionallySizedBox(
-                          widthFactor: _currentStep / 2,
-                          child: Container(
-                            height: 8,
-                            decoration: BoxDecoration(
-                              color: primary,
-                              borderRadius: BorderRadius.circular(999),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 8),
-
-            // Step Content
             Expanded(
               child: AnimatedSwitcher(
                 duration: const Duration(milliseconds: 300),
-                switchInCurve: Curves.easeInOut,
-                switchOutCurve: Curves.easeInOut,
                 child: _currentStep == 1
                     ? ProfileSetupScreen(
                   key: const ValueKey(1),
-                  onSaveAndContinue: _goToNextStep,
+                  onSaveAndContinue: (profileData) {
+                    _saveProfileData(profileData);
+                    setState(() => _currentStep = 2);
+                  },
+                  fullName: widget.fullNameFromSignup,
                 )
-                    : const RoleSetupScreen(
-                  key: ValueKey(2),
+                    : RoleSetupScreen(
+                  key: const ValueKey(2),
+                  onRoleSelected: _saveRoleAndFinish,
                 ),
               ),
             ),

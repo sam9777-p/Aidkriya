@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 
 class RoleSetupScreen extends StatefulWidget {
-  const RoleSetupScreen({super.key});
+  final Function(String) onRoleSelected;
+  const RoleSetupScreen({super.key, required this.onRoleSelected});
 
   @override
   State<RoleSetupScreen> createState() => _RoleSetupScreenState();
@@ -18,9 +19,8 @@ class _RoleSetupScreenState extends State<RoleSetupScreen> {
       return;
     }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Selected Role: $_selectedRole')),
-    );
+    // <-- use widget.onRoleSelected, not onRoleSelected
+    widget.onRoleSelected(_selectedRole!);
   }
 
   @override
@@ -58,7 +58,6 @@ class _RoleSetupScreenState extends State<RoleSetupScreen> {
                             fontSize: 16, fontWeight: FontWeight.w500),
                       ),
                       const SizedBox(height: 28),
-
 
                       _buildRoleCard(
                         title: 'Walker (Companion)',

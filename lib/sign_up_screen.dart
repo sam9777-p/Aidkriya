@@ -1,74 +1,90 @@
-import 'package:aidkriya_walker/sign_up_screen.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:aidkriya_walker/setup_flow_screen.dart';
+import 'package:aidkriya_walker/sign_in_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
-class SignInScreen extends StatefulWidget {
-  const SignInScreen({super.key});
+class SignUpScreen extends StatefulWidget {
+  const SignUpScreen({super.key});
 
   @override
-  State<SignInScreen> createState() => _SignInScreenState();
+  State<SignUpScreen> createState() => _SignUpScreenState();
 }
 
-class _SignInScreenState extends State<SignInScreen> {
+class _SignUpScreenState extends State<SignUpScreen> {
+  final TextEditingController _nameController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
+
+  final FocusNode _nameFocus = FocusNode();
   final FocusNode _emailFocus = FocusNode();
   final FocusNode _passwordFocus = FocusNode();
 
   bool _isGoogleHovered = false;
   bool _isEmailHovered = false;
-  bool _isSignUpHovered = false;
+  bool _isSignInHovered = false;
   bool _isLoading = false;
-  bool _isPasswordVisible = false; // 👈 NEW — controls password visibility
+  bool _isPasswordVisible = false;
 
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
   @override
   void dispose() {
+    _nameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
+    _nameFocus.dispose();
     _emailFocus.dispose();
     _passwordFocus.dispose();
     super.dispose();
   }
 
-  Future<void> _signInWithEmail() async {
-    setState(() => _isLoading = true);
+  Future<void> _signUpWithEmail() async {
+    final name = _nameController.text.trim();
+    final email = _emailController.text.trim();
+    final password = _passwordController.text.trim();
+
+    if (name.isEmpty || email.isEmpty || password.isEmpty) {
+      _showSnackBar('Please fill all fields.');
+      return;
+    }
+
     try {
-      final userCredential = await _auth.signInWithEmailAndPassword(
-        email: _emailController.text.trim(),
-        password: _passwordController.text.trim(),
+      setState(() => _isLoading = true);
+      final userCredential = await _auth.createUserWithEmailAndPassword(
+        email: email,
+        password: password,
       );
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Welcome, ${userCredential.user?.email}!')),
+      await userCredential.user?.updateDisplayName(name);
+
+      final user = userCredential.user;
+
+      _showSnackBar('Account created successfully!');
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => SetupFlowScreen(
+            fullNameFromSignup: _nameController.text.trim(),
+            userId: user!.uid,
+            email: user.email!,
+          ),
+        ),
       );
-      // TODO: Navigate to dashboard/home here
     } on FirebaseAuthException catch (e) {
-      String message;
-      switch (e.code) {
-        case 'user-not-found':
-          message = 'No user found with this email.';
-          break;
-        case 'wrong-password':
-          message = 'Incorrect password.';
-          break;
-        default:
-          message = e.message ?? 'Sign-in failed.';
-      }
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      _showSnackBar(e.message ?? 'Sign-up failed. Please try again.');
     } finally {
       setState(() => _isLoading = false);
     }
   }
 
   Future<void> _signInWithGoogle() async {
-    setState(() => _isLoading = true);
     try {
+      setState(() => _isLoading = true);
+
       final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
       if (googleUser == null) {
-        setState(() => _isLoading = false);
+        _showSnackBar('Google Sign-in cancelled.');
         return;
       }
 
@@ -76,23 +92,27 @@ class _SignInScreenState extends State<SignInScreen> {
       await googleUser.authentication;
 
       final credential = GoogleAuthProvider.credential(
-        idToken: googleAuth.idToken,
         accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
       );
 
       await _auth.signInWithCredential(credential);
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Signed in with Google successfully!')),
-      );
-      // TODO: Navigate to dashboard/home here
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Google Sign-in failed: $e')),
-      );
+      _showSnackBar('Signed in with Google!');
+    } on FirebaseAuthException catch (e) {
+      _showSnackBar(e.message ?? 'Google sign-in failed.');
     } finally {
       setState(() => _isLoading = false);
     }
+  }
+
+  void _showSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.green,
+      ),
+    );
   }
 
   @override
@@ -109,13 +129,12 @@ class _SignInScreenState extends State<SignInScreen> {
     Color buttonHoverColor(Color baseColor) {
       return HSLColor.fromColor(baseColor)
           .withLightness(
-        (HSLColor.fromColor(baseColor).lightness * 0.8).clamp(0.3, 0.9),
-      )
+          (HSLColor.fromColor(baseColor).lightness * 0.8).clamp(0.3, 0.9))
           .toColor();
     }
 
     InputDecoration buildInputDecoration(String hint, FocusNode focusNode,
-        {bool isPassword = false}) {
+        {Widget? suffixIcon}) {
       return InputDecoration(
         hintText: hint,
         hintStyle: TextStyle(
@@ -136,22 +155,7 @@ class _SignInScreenState extends State<SignInScreen> {
         ),
         contentPadding:
         const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
-
-        suffixIcon: isPassword
-            ? IconButton(
-          icon: Icon(
-            _isPasswordVisible
-                ? Icons.visibility
-                : Icons.visibility_off,
-            color: isDark ? Colors.white70 : Colors.black54,
-          ),
-          onPressed: () {
-            setState(() {
-              _isPasswordVisible = !_isPasswordVisible;
-            });
-          },
-        )
-            : null,
+        suffixIcon: suffixIcon,
       );
     }
 
@@ -186,8 +190,9 @@ class _SignInScreenState extends State<SignInScreen> {
                         ),
                       ),
                       const SizedBox(height: 20),
+
                       Text(
-                        "Welcome to aidKRIYA Walker",
+                        "Create your aidKRIYA Walker account",
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontSize: isMobile ? 24 : 30,
@@ -197,7 +202,7 @@ class _SignInScreenState extends State<SignInScreen> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        "Walk together, make a difference.",
+                        "Join us and start making a difference today.",
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           color: isDark ? Colors.grey[300] : Colors.black54,
@@ -209,12 +214,24 @@ class _SignInScreenState extends State<SignInScreen> {
                       Focus(
                         onFocusChange: (_) => setState(() {}),
                         child: TextField(
+                          controller: _nameController,
+                          focusNode: _nameFocus,
+                          style:
+                          TextStyle(color: isDark ? textDark : Colors.black),
+                          decoration:
+                          buildInputDecoration("Full Name", _nameFocus),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+
+                      Focus(
+                        onFocusChange: (_) => setState(() {}),
+                        child: TextField(
                           controller: _emailController,
                           focusNode: _emailFocus,
                           style:
                           TextStyle(color: isDark ? textDark : Colors.black),
-                          decoration:
-                          buildInputDecoration("Email", _emailFocus),
+                          decoration: buildInputDecoration("Email", _emailFocus),
                         ),
                       ),
                       const SizedBox(height: 16),
@@ -224,14 +241,27 @@ class _SignInScreenState extends State<SignInScreen> {
                         child: TextField(
                           controller: _passwordController,
                           focusNode: _passwordFocus,
-                          obscureText:
-                          !_isPasswordVisible,
+                          obscureText: !_isPasswordVisible,
                           style:
                           TextStyle(color: isDark ? textDark : Colors.black),
                           decoration: buildInputDecoration(
                             "Password",
                             _passwordFocus,
-                            isPassword: true,
+                            suffixIcon: IconButton(
+                              icon: Icon(
+                                _isPasswordVisible
+                                    ? Icons.visibility
+                                    : Icons.visibility_off,
+                                color: isDark
+                                    ? Colors.grey[300]
+                                    : Colors.grey[700],
+                              ),
+                              onPressed: () {
+                                setState(() {
+                                  _isPasswordVisible = !_isPasswordVisible;
+                                });
+                              },
+                            ),
                           ),
                         ),
                       ),
@@ -240,25 +270,30 @@ class _SignInScreenState extends State<SignInScreen> {
                       MouseRegion(
                         onEnter: (_) => setState(() => _isGoogleHovered = true),
                         onExit: (_) => setState(() => _isGoogleHovered = false),
-                        child: ElevatedButton.icon(
-                          onPressed: _isLoading ? null : _signInWithGoogle,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: _isGoogleHovered
-                                ? buttonHoverColor(primaryGreen)
-                                : primaryGreen,
-                            minimumSize: const Size(double.infinity, 50),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(15),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 250),
+                          curve: Curves.easeInOut,
+                          child: ElevatedButton.icon(
+                            onPressed: _signInWithGoogle,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: _isGoogleHovered
+                                  ? buttonHoverColor(primaryGreen)
+                                  : primaryGreen,
+                              minimumSize: const Size(double.infinity, 50),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(15),
+                              ),
+                              elevation: _isGoogleHovered ? 8 : 4,
                             ),
-                          ),
-                          icon: const Icon(Icons.g_mobiledata_rounded,
-                              color: Colors.white, size: 28),
-                          label: const Text(
-                            "Sign in with Google",
-                            style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16),
+                            icon: const Icon(Icons.g_mobiledata_rounded,
+                                color: Colors.white, size: 28),
+                            label: const Text(
+                              "Sign up with Google",
+                              style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16),
+                            ),
                           ),
                         ),
                       ),
@@ -267,27 +302,24 @@ class _SignInScreenState extends State<SignInScreen> {
                       Row(
                         children: [
                           Expanded(
-                            child: Divider(
-                              color: isDark ? Colors.grey[700] : Colors.grey,
-                            ),
-                          ),
+                              child: Divider(
+                                  color:
+                                  isDark ? Colors.grey[700] : Colors.grey)),
                           Padding(
                             padding:
                             const EdgeInsets.symmetric(horizontal: 8.0),
                             child: Text(
                               "Or",
                               style: TextStyle(
-                                color: isDark
-                                    ? Colors.grey[300]
-                                    : Colors.black87,
+                                color:
+                                isDark ? Colors.grey[300] : Colors.black87,
                               ),
                             ),
                           ),
                           Expanded(
-                            child: Divider(
-                              color: isDark ? Colors.grey[700] : Colors.grey,
-                            ),
-                          ),
+                              child: Divider(
+                                  color:
+                                  isDark ? Colors.grey[700] : Colors.grey)),
                         ],
                       ),
                       const SizedBox(height: 16),
@@ -295,25 +327,29 @@ class _SignInScreenState extends State<SignInScreen> {
                       MouseRegion(
                         onEnter: (_) => setState(() => _isEmailHovered = true),
                         onExit: (_) => setState(() => _isEmailHovered = false),
-                        child: ElevatedButton.icon(
-                          onPressed: _isLoading ? null : _signInWithEmail,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: _isEmailHovered
-                                ? buttonHoverColor(primaryGreen)
-                                : primaryGreen,
-                            minimumSize: const Size(double.infinity, 50),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(15),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 250),
+                          curve: Curves.easeInOut,
+                          child: ElevatedButton.icon(
+                            onPressed: _signUpWithEmail,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: _isEmailHovered
+                                  ? buttonHoverColor(primaryGreen)
+                                  : primaryGreen,
+                              minimumSize: const Size(double.infinity, 50),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(15),
+                              ),
+                              elevation: _isEmailHovered ? 8 : 4,
                             ),
-                          ),
-                          icon: const Icon(Icons.mail_outline_rounded,
-                              color: Colors.white),
-                          label: const Text(
-                            "Sign in with Email",
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
+                            icon: const Icon(Icons.person_add_alt_1,
+                                color: Colors.white),
+                            label: const Text(
+                              "Sign up with Email",
+                              style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16),
                             ),
                           ),
                         ),
@@ -321,28 +357,28 @@ class _SignInScreenState extends State<SignInScreen> {
                       const SizedBox(height: 24),
 
                       MouseRegion(
-                        onEnter: (_) => setState(() => _isSignUpHovered = true),
-                        onExit: (_) => setState(() => _isSignUpHovered = false),
+                        onEnter: (_) => setState(() => _isSignInHovered = true),
+                        onExit: (_) => setState(() => _isSignInHovered = false),
                         child: GestureDetector(
                           onTap: () {
                             Navigator.pushReplacement(
                               context,
                               MaterialPageRoute(
-                                  builder: (context) => const SignUpScreen()),
+                                  builder: (context) => const SignInScreen()),
                             );
                           },
                           child: Text.rich(
                             TextSpan(
-                              text: "Don't have an account? ",
+                              text: "Already have an account? ",
                               style: TextStyle(
                                   color: isDark ? textDark : Colors.black),
                               children: [
                                 TextSpan(
-                                  text: "Sign Up",
+                                  text: "Sign In",
                                   style: TextStyle(
                                     color: primaryGreen,
                                     fontWeight: FontWeight.bold,
-                                    decoration: _isSignUpHovered
+                                    decoration: _isSignInHovered
                                         ? TextDecoration.underline
                                         : TextDecoration.none,
                                     decorationThickness: 2,
@@ -354,12 +390,12 @@ class _SignInScreenState extends State<SignInScreen> {
                         ),
                       ),
                       const SizedBox(height: 30),
+
                       Text(
                         "Terms of Service · Privacy Policy",
                         style: TextStyle(
-                          color: isDark ? Colors.grey[400] : Colors.grey,
-                          fontSize: 12,
-                        ),
+                            color: isDark ? Colors.grey[400] : Colors.grey,
+                            fontSize: 12),
                         textAlign: TextAlign.center,
                       ),
                     ],
@@ -371,11 +407,9 @@ class _SignInScreenState extends State<SignInScreen> {
 
           if (_isLoading)
             Container(
-              color: Colors.black.withOpacity(0.4),
-              width: double.infinity,
-              height: double.infinity,
+              color: Colors.black26,
               child: const Center(
-                child: CircularProgressIndicator(color: Color(0xFF20DF6C)),
+                child: CircularProgressIndicator(color: Colors.green),
               ),
             ),
         ],

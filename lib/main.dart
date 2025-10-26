@@ -1,4 +1,7 @@
 import 'package:aidkriya_walker/find_walker_screen.dart';
+import 'package:aidkriya_walker/setup_flow_screen.dart';
+import 'package:aidkriya_walker/sign_in_screen.dart';
+import 'package:aidkriya_walker/sign_up_screen.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 
@@ -6,7 +9,9 @@ import 'firebase_options.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
   runApp(const MyApp());
 }
 
@@ -24,7 +29,7 @@ class MyApp extends StatelessWidget {
         scaffoldBackgroundColor: Colors.white,
         fontFamily: 'SF Pro',
       ),
-      home: FindWalkerScreen(),
+      home: SignUpScreen(),
     );
   }
 }

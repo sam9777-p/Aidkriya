@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 
 class ProfileSetupScreen extends StatefulWidget {
-  final VoidCallback onSaveAndContinue;
+  final Function(Map<String, dynamic>) onSaveAndContinue;
+  final String fullName;
 
-  const ProfileSetupScreen({super.key, required this.onSaveAndContinue});
+  const ProfileSetupScreen({super.key, required this.onSaveAndContinue,
+    required this.fullName});
 
   @override
   State<ProfileSetupScreen> createState() => _ProfileSetupScreenState();
@@ -46,6 +48,12 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   final TextEditingController _interestTextController = TextEditingController();
 
   @override
+  void initState() {
+    super.initState();
+    _fullNameController.text = widget.fullName;
+  }
+
+  @override
   void dispose() {
     _fullNameController.dispose();
     _ageController.dispose();
@@ -77,16 +85,14 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     if (_formKey.currentState?.validate() ?? false) {
       final profile = {
         'fullName': _fullNameController.text.trim(),
-        // etc...
+        'age': int.tryParse(_ageController.text.trim()) ?? 0,
+        'city': _cityController.text.trim(),
+        'bio': _bioController.text.trim(),
+        'phone': '$_selectedCountryCode ${_phoneController.text.trim()}',
+        'interests': _selectedInterests,
       };
 
-      debugPrint('Profile data: $profile');
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Saved. Continuing...')),
-      );
-
-      widget.onSaveAndContinue();
+      widget.onSaveAndContinue(profile);
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please fix validation errors.')),
