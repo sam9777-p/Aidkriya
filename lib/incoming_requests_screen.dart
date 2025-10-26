@@ -1,3 +1,8 @@
+import 'package:aidkriya_walker/backend/walk_request_service.dart';
+import 'package:aidkriya_walker/detail_income_request.dart';
+import 'package:aidkriya_walker/model/walk_request.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import 'components/request_card.dart';
@@ -11,40 +16,74 @@ class IncomingRequestsScreen extends StatefulWidget {
 }
 
 class _IncomingRequestsScreenState extends State<IncomingRequestsScreen> {
-  // Sample data
-  final List<IncomingRequest> requests = [
-    IncomingRequest(
-      id: '1',
-      walkerName: 'Elara Vance',
-      walkerImageUrl: null,
-      dateTime: 'Tomorrow, 3:00 PM',
-      location: 'Central Park Loop',
-      pace: 'Leisurely Pace',
-    ),
-    IncomingRequest(
-      id: '2',
-      walkerName: 'Leo Maxwell',
-      walkerImageUrl: null,
-      dateTime: 'Fri, Nov 29, 9:00 AM',
-      location: 'Riverside Trail',
-      pace: 'Moderate Pace',
-    ),
-    IncomingRequest(
-      id: '3',
-      walkerName: 'Cora Diaz',
-      walkerImageUrl: null,
-      dateTime: 'Sat, Nov 30, 6:00 PM',
-      location: 'Harbor View Path',
-      pace: 'Brisk Pace',
-    ),
-  ];
+  final walkService = WalkRequestService();
+  final userID = FirebaseAuth.instance.currentUser?.uid;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F5F5),
       appBar: _buildAppBar(),
-      body: requests.isEmpty ? _buildEmptyState() : _buildRequestsList(),
+      body: StreamBuilder<List<WalkRequest>>(
+        stream: walkService.getReceivedRequests(userID ?? 'guest'),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          if (!snapshot.hasData || snapshot.data!.isEmpty) {
+            return _buildEmptyState();
+          }
+
+          // Only pending requests
+          final pendingRequests = snapshot.data!
+              .where((request) => request.status == 'Pending')
+              .toList();
+
+          if (pendingRequests.isEmpty) return _buildEmptyState();
+
+          return ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: pendingRequests.length,
+            itemBuilder: (context, index) {
+              final request = pendingRequests[index];
+
+              // Use FutureBuilder to fetch Walker details
+              return FutureBuilder<DocumentSnapshot>(
+                future: _firestore.collection('users').doc(request.id).get(),
+                builder: (context, walkerSnapshot) {
+                  if (!walkerSnapshot.hasData) {
+                    return const SizedBox(); // Or a small loading placeholder
+                  }
+
+                  final walkerData =
+                      walkerSnapshot.data!.data() as Map<String, dynamic>;
+                  final mergedRequest = IncomingRequest(
+                    id: request.id,
+                    walker: request.walker,
+                    date: request.date,
+                    time: request.time,
+                    duration: request.duration,
+                    latitude: request.latitude,
+                    longitude: request.longitude,
+                    status: request.status,
+                    notes: request.notes,
+                    name: walkerData['name'] ?? request.walker.name ?? '',
+                    bio: walkerData['bio'] ?? request.walker.bio,
+                    imageUrl: walkerData['imageUrl'] ?? null,
+                  );
+
+                  return RequestCard(
+                    request: mergedRequest,
+                    onTap: () => _onRequestTapped(mergedRequest),
+                  );
+                },
+              );
+            },
+          );
+        },
+      ),
     );
   }
 
@@ -52,10 +91,6 @@ class _IncomingRequestsScreenState extends State<IncomingRequestsScreen> {
     return AppBar(
       backgroundColor: const Color(0xFFF5F5F5),
       elevation: 0,
-      leading: IconButton(
-        icon: const Icon(Icons.arrow_back, color: Colors.black),
-        onPressed: () => Navigator.pop(context),
-      ),
       title: const Text(
         'Incoming Requests',
         style: TextStyle(
@@ -68,21 +103,6 @@ class _IncomingRequestsScreenState extends State<IncomingRequestsScreen> {
     );
   }
 
-  Widget _buildRequestsList() {
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: requests.length,
-      itemBuilder: (context, index) {
-        return RequestCard(
-          request: requests[index],
-          onAccept: () => _onAcceptRequest(requests[index]),
-          onReject: () => _onRejectRequest(requests[index]),
-          onTap: () => _onRequestTapped(requests[index]),
-        );
-      },
-    );
-  }
-
   Widget _buildEmptyState() {
     return Center(
       child: Column(
@@ -91,7 +111,7 @@ class _IncomingRequestsScreenState extends State<IncomingRequestsScreen> {
           Icon(Icons.inbox_outlined, size: 80, color: Colors.grey[400]),
           const SizedBox(height: 16),
           Text(
-            'No Incoming Requests',
+            'No Pending Requests',
             style: TextStyle(
               fontSize: 18,
               color: Colors.grey[600],
@@ -103,72 +123,11 @@ class _IncomingRequestsScreenState extends State<IncomingRequestsScreen> {
     );
   }
 
-  // Callback methods
-  void _onFilterPressed() {
-    print('Filter requests');
-    // Show filter options
-  }
-
   void _onRequestTapped(IncomingRequest request) {
-    print('View request details: ${request.walkerName}');
-    // Navigate to detailed request screen
-  }
-
-  void _onAcceptRequest(IncomingRequest request) {
-    print('Accept request from ${request.walkerName}');
-    // Show confirmation dialog
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Accept Request'),
-        content: Text('Accept walk request from ${request.walkerName}?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              setState(() {
-                requests.remove(request);
-              });
-              // API call to accept
-            },
-            child: const Text(
-              'Accept',
-              style: TextStyle(color: Color(0xFF6BCBA6)),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _onRejectRequest(IncomingRequest request) {
-    print('Reject request from ${request.walkerName}');
-    // Show confirmation dialog
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Reject Request'),
-        content: Text('Reject walk request from ${request.walkerName}?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              setState(() {
-                requests.remove(request);
-              });
-              // API call to reject
-            },
-            child: const Text('Reject', style: TextStyle(color: Colors.red)),
-          ),
-        ],
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => DetailIncomeRequest(walkRequest: request),
       ),
     );
   }

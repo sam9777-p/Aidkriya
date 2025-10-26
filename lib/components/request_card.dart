@@ -1,24 +1,14 @@
-import 'package:aidkriya_walker/components/request_accept_button.dart';
 import 'package:aidkriya_walker/components/request_detail_row.dart';
-import 'package:aidkriya_walker/components/request_reject_button.dart';
 import 'package:aidkriya_walker/components/walker_avatar.dart';
+import 'package:aidkriya_walker/model/incoming_request.dart';
 import 'package:flutter/material.dart';
-
-import '../model/incoming_request.dart';
 
 class RequestCard extends StatelessWidget {
   final IncomingRequest request;
-  final VoidCallback onAccept;
-  final VoidCallback onReject;
   final VoidCallback onTap;
 
-  const RequestCard({
-    Key? key,
-    required this.request,
-    required this.onAccept,
-    required this.onReject,
-    required this.onTap,
-  }) : super(key: key);
+  const RequestCard({Key? key, required this.request, required this.onTap})
+    : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -42,14 +32,14 @@ class RequestCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                WalkerAvatar(imageUrl: request.walkerImageUrl, size: 60),
+                WalkerAvatar(imageUrl: request.imageUrl, size: 60),
                 const SizedBox(width: 16),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        request.walkerName,
+                        request.name,
                         style: const TextStyle(
                           fontSize: 20,
                           fontWeight: FontWeight.bold,
@@ -59,7 +49,7 @@ class RequestCard extends StatelessWidget {
                       const SizedBox(height: 6),
                       RequestDetailRow(
                         icon: Icons.access_time,
-                        text: request.dateTime,
+                        text: "${request.date}, ${request.time}",
                       ),
                     ],
                   ),
@@ -67,17 +57,16 @@ class RequestCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 16),
-            RequestDetailRow(icon: Icons.location_on, text: request.location),
-            const SizedBox(height: 12),
-            RequestDetailRow(icon: Icons.speed, text: request.pace),
-            const SizedBox(height: 20),
-            Row(
-              children: [
-                Expanded(child: RequestRejectButton(onPressed: onReject)),
-                const SizedBox(width: 12),
-                Expanded(child: RequestAcceptButton(onPressed: onAccept)),
-              ],
+            RequestDetailRow(
+              icon: Icons.location_on,
+              text: request.walker.distance.toString(),
             ),
+            const SizedBox(height: 12),
+            RequestDetailRow(
+              icon: Icons.timelapse_outlined,
+              text: request.duration,
+            ),
+            const SizedBox(height: 20),
           ],
         ),
       ),

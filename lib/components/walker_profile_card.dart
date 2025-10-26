@@ -41,7 +41,7 @@ class WalkerProfileCard extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             Text(
-              '${walker.name}, ${('user age')}',
+              '${walker.name}, ${(walker.age)}',
               style: const TextStyle(
                 fontSize: 24,
                 fontWeight: FontWeight.bold,
@@ -50,7 +50,7 @@ class WalkerProfileCard extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              "walker.bio" ?? 'Loves walking in nature and helping others.',
+              walker.bio ?? 'Loves walking in nature and helping others.',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 14, color: Colors.grey[600]),
             ),

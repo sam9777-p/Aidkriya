@@ -1,9 +1,9 @@
-import 'package:aidkriya_walker/model/walker_list_early.dart';
+import 'package:aidkriya_walker/model/Walker.dart';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 class MapViewWidget extends StatefulWidget {
-  final List<WalkerListEarly> walkers;
+  final List<Walker> walkers;
   final ValueChanged<String> onMarkerTapped;
 
   const MapViewWidget({
@@ -29,7 +29,7 @@ class _MapViewWidgetState extends State<MapViewWidget> {
   void _createMarkers() {
     _markers = widget.walkers.map((walker) {
       return Marker(
-        markerId: MarkerId(walker.id),
+        markerId: MarkerId(walker.name ?? 'guest'),
         position: LatLng(walker.latitude, walker.longitude),
         onTap: () => widget.onMarkerTapped(walker.id),
         icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),

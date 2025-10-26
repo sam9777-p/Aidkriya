@@ -1,4 +1,3 @@
-import 'package:aidkriya_walker/profile_screen.dart';
 import 'package:aidkriya_walker/sign_up_screen.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -7,6 +6,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 
 import 'firebase_options.dart';
+import 'home_screen.dart';
 
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
@@ -54,6 +54,7 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
     return MaterialApp(
       title: 'aidKRIYA Walker',
       debugShowCheckedModeBanner: false,
@@ -63,7 +64,8 @@ class MyApp extends StatelessWidget {
         scaffoldBackgroundColor: Colors.white,
         fontFamily: 'SF Pro',
       ),
-      home: const ProfileScreen(),
+      home: user != null ? const HomeScreen() : const SignUpScreen(),
+      // home: IncomingRequestsScreen(),
     );
   }
 }

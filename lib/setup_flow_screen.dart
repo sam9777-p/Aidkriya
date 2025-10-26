@@ -1,7 +1,7 @@
-import 'package:aidkriya_walker/walker_home.dart';
-import 'package:aidkriya_walker/wanderer_home.dart';
+import 'package:aidkriya_walker/home_screen.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+
 import 'profile_setup_screen.dart';
 import 'role_setup_screen.dart';
 
@@ -32,7 +32,9 @@ class _SetupFlowScreenState extends State<SetupFlowScreen> {
   }
 
   void _saveRoleAndFinish(String role) async {
-    final userDoc = FirebaseFirestore.instance.collection('users').doc(widget.userId);
+    final userDoc = FirebaseFirestore.instance
+        .collection('users')
+        .doc(widget.userId);
 
     await userDoc.set({
       ..._profileData,
@@ -44,14 +46,14 @@ class _SetupFlowScreenState extends State<SetupFlowScreen> {
     if (role == "Walker") {
       Navigator.pushAndRemoveUntil(
         context,
-        MaterialPageRoute(builder: (_) => const WalkerHome()),
-            (route) => false,
+        MaterialPageRoute(builder: (_) => const HomeScreen()),
+        (route) => false,
       );
     } else {
       Navigator.pushAndRemoveUntil(
         context,
-        MaterialPageRoute(builder: (_) => const WandererHome()),
-            (route) => false,
+        MaterialPageRoute(builder: (_) => const HomeScreen()),
+        (route) => false,
       );
     }
   }
@@ -84,7 +86,10 @@ class _SetupFlowScreenState extends State<SetupFlowScreen> {
                         ? "Let's Get to Know You"
                         : 'Choose Your Role',
                     textAlign: TextAlign.center,
-                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 48),
@@ -96,17 +101,17 @@ class _SetupFlowScreenState extends State<SetupFlowScreen> {
                 duration: const Duration(milliseconds: 300),
                 child: _currentStep == 1
                     ? ProfileSetupScreen(
-                  key: const ValueKey(1),
-                  onSaveAndContinue: (profileData) {
-                    _saveProfileData(profileData);
-                    setState(() => _currentStep = 2);
-                  },
-                  fullName: widget.fullNameFromSignup,
-                )
+                        key: const ValueKey(1),
+                        onSaveAndContinue: (profileData) {
+                          _saveProfileData(profileData);
+                          setState(() => _currentStep = 2);
+                        },
+                        fullName: widget.fullNameFromSignup,
+                      )
                     : RoleSetupScreen(
-                  key: const ValueKey(2),
-                  onRoleSelected: _saveRoleAndFinish,
-                ),
+                        key: const ValueKey(2),
+                        onRoleSelected: _saveRoleAndFinish,
+                      ),
               ),
             ),
           ],

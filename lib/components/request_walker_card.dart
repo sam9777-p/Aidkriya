@@ -1,9 +1,8 @@
+import 'package:aidkriya_walker/model/incoming_request.dart';
 import 'package:flutter/material.dart';
 
-import '../model/Walker.dart';
-
 class RequestWalkerCard extends StatelessWidget {
-  final Walker walker;
+  final IncomingRequest walker;
   final VoidCallback onMessageTapped;
 
   const RequestWalkerCard({
@@ -45,7 +44,7 @@ class RequestWalkerCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  walker.name ?? 'omkar',
+                  walker.name,
                   style: const TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
@@ -54,7 +53,7 @@ class RequestWalkerCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  "walker.bio",
+                  walker.bio,
                   style: TextStyle(fontSize: 14, color: Colors.grey[600]),
                 ),
               ],

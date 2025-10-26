@@ -1,3 +1,4 @@
+import 'package:aidkriya_walker/model/incoming_request.dart';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
@@ -6,19 +7,18 @@ import 'components/reject_button.dart';
 import 'components/request_map_widget.dart';
 import 'components/request_walker_card.dart';
 import 'components/walk_info_row.dart';
-import 'model/walk_request.dart';
 
-class WalkRequestScreen extends StatefulWidget {
-  final WalkRequest walkRequest;
+class DetailIncomeRequest extends StatefulWidget {
+  final IncomingRequest walkRequest;
 
-  const WalkRequestScreen({Key? key, required this.walkRequest})
+  const DetailIncomeRequest({Key? key, required this.walkRequest})
     : super(key: key);
 
   @override
-  State<WalkRequestScreen> createState() => _WalkRequestScreenState();
+  State<DetailIncomeRequest> createState() => _DetailIncomeRequestState();
 }
 
-class _WalkRequestScreenState extends State<WalkRequestScreen> {
+class _DetailIncomeRequestState extends State<DetailIncomeRequest> {
   int _currentIndex = 1;
   GoogleMapController? _mapController;
 
@@ -76,7 +76,7 @@ class _WalkRequestScreenState extends State<WalkRequestScreen> {
     return SizedBox(
       height: 300,
       child: RequestMapWidget(
-        location: widget.walkRequest.location,
+        location: widget.walkRequest.walker.name ?? 'guest',
         latitude: widget.walkRequest.latitude,
         longitude: widget.walkRequest.longitude,
         onMapCreated: (controller) => _mapController = controller,
@@ -86,7 +86,7 @@ class _WalkRequestScreenState extends State<WalkRequestScreen> {
 
   Widget _buildWalkerInfoCard() {
     return RequestWalkerCard(
-      walker: widget.walkRequest.walker,
+      walker: widget.walkRequest,
       onMessageTapped: _onMessageTapped,
     );
   }
@@ -97,14 +97,14 @@ class _WalkRequestScreenState extends State<WalkRequestScreen> {
         WalkInfoRow(
           icon: Icons.calendar_today,
           iconColor: const Color(0xFF6BCBA6),
-          primaryText: widget.walkRequest.dateTime,
+          primaryText: widget.walkRequest.date,
           secondaryText: widget.walkRequest.duration,
         ),
         const SizedBox(height: 16),
         WalkInfoRow(
           icon: Icons.location_on,
           iconColor: const Color(0xFF6BCBA6),
-          primaryText: widget.walkRequest.location,
+          primaryText: widget.walkRequest.walker.distance.toString(),
           secondaryText: null,
         ),
       ],

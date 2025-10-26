@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:developer' as developer;
 
+import 'package:aidkriya_walker/request_walk_screen.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
@@ -10,6 +12,8 @@ import 'backend/location_service.dart';
 import 'components/map_view_widget.dart';
 import 'components/view_toggle.dart';
 import 'components/walker_card.dart';
+import 'model/Walker.dart';
+import 'model/user_model.dart';
 import 'model/walker_list_early.dart';
 
 class FindWalkerScreen extends StatefulWidget {
@@ -21,44 +25,15 @@ class FindWalkerScreen extends StatefulWidget {
 
 class _FindWalkerScreenState extends State<FindWalkerScreen> {
   StreamSubscription? _walkerSub;
+  bool _isLoading = true;
   Position? myPos;
   Set<Marker> _markers = {};
-  List<WalkerListEarly> walkers = [];
+  List<Walker> walkers = [];
 
   bool isMapView = true;
   final TextEditingController _searchController = TextEditingController();
   final DraggableScrollableController _sheetController =
       DraggableScrollableController();
-
-  // final List<Walker> walkers = [
-  //   Walker(
-  //     id: '1',
-  //     name: 'Riya S.',
-  //     rating: 4.8,
-  //     distance: 0.8,
-  //     imageUrl: null,
-  //     latitude: 37.7749,
-  //     longitude: -122.4194,
-  //   ),
-  //   Walker(
-  //     id: '2',
-  //     name: 'Ken T.',
-  //     rating: 4.9,
-  //     distance: 1.2,
-  //     imageUrl: null,
-  //     latitude: 37.7849,
-  //     longitude: -122.4094,
-  //   ),
-  //   Walker(
-  //     id: '3',
-  //     name: 'Kdds T.',
-  //     rating: 4.6,
-  //     distance: 3.2,
-  //     imageUrl: null,
-  //     latitude: 37.7649,
-  //     longitude: -122.4294,
-  //   ),
-  // ];
 
   final locationService = LocationService();
 
@@ -78,22 +53,20 @@ class _FindWalkerScreenState extends State<FindWalkerScreen> {
   }
 
   @override
-  void setState(VoidCallback fn) {
-    // TODO: implement setState
-    super.setState(fn);
-  }
-
-  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F5F5),
       appBar: _buildAppBar(),
-      body: Column(
-        children: [
-          _buildViewToggle(),
-          Expanded(child: isMapView ? _buildMapScreen() : _buildListViewOnly()),
-        ],
-      ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : Column(
+              children: [
+                _buildViewToggle(),
+                Expanded(
+                  child: isMapView ? _buildMapScreen() : _buildListViewOnly(),
+                ),
+              ],
+            ),
     );
   }
 
@@ -209,10 +182,7 @@ class _FindWalkerScreenState extends State<FindWalkerScreen> {
     return AppBar(
       backgroundColor: const Color(0xFFf5f5f5),
       elevation: 0,
-      leading: IconButton(
-        icon: const Icon(Icons.arrow_back, color: Colors.black),
-        onPressed: () => Navigator.pop(context),
-      ),
+      centerTitle: true,
       title: const Text(
         'Find a Walker',
         style: TextStyle(
@@ -298,15 +268,62 @@ class _FindWalkerScreenState extends State<FindWalkerScreen> {
   }
 
   void _startListeningToWalkers() async {
+    setState(() => _isLoading = true);
+
     myPos = await Geolocator.getCurrentPosition();
 
     _walkerSub = listenToActiveWalkers().listen((activeWalkers) async {
-      // Filter nearby (<= 5 km)
+      if (!mounted) return;
+
+      // Filter nearby walkers
       final nearbyWalkers = await getNearbyWalkers(myPos!, activeWalkers);
 
+      // Sort by distance (if not already)
+      nearbyWalkers.sort((a, b) => a.distance!.compareTo(b.distance!));
+
+      // Fetch user profiles from Firestore
+      final walkersWithProfiles = await _attachUserData(nearbyWalkers);
+
+      if (!mounted) return;
+
       // Update map markers
-      _updateMarkers(nearbyWalkers);
+      _updateMarkers(walkersWithProfiles);
+
+      // ✅ Hide loader after first successful fetch
+      setState(() => _isLoading = false);
     });
+  }
+
+  Future<List<Walker>> _attachUserData(List<WalkerListEarly> walkers) async {
+    final firestore = FirebaseFirestore.instance;
+
+    // Run all Firestore fetches in parallel
+    final futures = walkers.map((w) async {
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(w.id)
+          .get();
+      debugPrint("Doc exists: ${doc.exists}");
+      debugPrint("Doc data: ${doc.data()}");
+
+      if (!doc.exists) return Future.value(); // skip silently
+
+      final userModel = UserModel.fromMap(doc.data()!);
+      return Walker(
+        id: w.id,
+        name: userModel.fullName,
+        rating: userModel.rating.toDouble(),
+        distance: w.distance ?? 0.0,
+        imageUrl: userModel.imageUrl,
+        latitude: w.latitude,
+        longitude: w.longitude,
+        age: userModel.age.toDouble(),
+        bio: userModel.bio,
+      );
+    });
+
+    final result = await Future.wait(futures);
+    return result.whereType<Walker>().toList();
   }
 
   Future<List<WalkerListEarly>> getNearbyWalkers(
@@ -338,14 +355,14 @@ class _FindWalkerScreenState extends State<FindWalkerScreen> {
     return nearby;
   }
 
-  void _updateMarkers(List<WalkerListEarly> nearbyWalkers) {
+  void _updateMarkers(List<Walker> nearbyWalkers) {
     final newMarkers = <Marker>{};
     for (var walker in nearbyWalkers) {
       newMarkers.add(
         Marker(
-          markerId: MarkerId(walker.id),
+          markerId: MarkerId(walker.name ?? 'guest'),
           position: LatLng(walker.latitude, walker.longitude),
-          infoWindow: InfoWindow(title: 'Walker: ${walker.id}'),
+          infoWindow: InfoWindow(title: 'Walker: ${walker.name}'),
         ),
       );
     }
@@ -357,13 +374,17 @@ class _FindWalkerScreenState extends State<FindWalkerScreen> {
     });
   }
 
-  // 🔹 Callbacks / Logic Hooks
-  void _onFilterPressed() => print('Filter pressed');
-  void _onSearchChanged(String value) => print('Search: $value');
   void _onMarkerTapped(String walkerId) => print('Marker tapped: $walkerId');
-  void _onRequestPressed(WalkerListEarly walker) =>
-      print('Request walker: ${walker.id}');
-  void _onInstantWalkPressed(WalkerListEarly walker) =>
+  void _onRequestPressed(Walker walker) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => RequestWalkScreen(walker: walker),
+      ),
+    );
+  }
+
+  void _onInstantWalkPressed(Walker walker) =>
       print('Instant walk with: ${walker.id}');
   void _onScheduleWalkPressed() => print('Schedule walk pressed');
 }

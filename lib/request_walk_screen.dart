@@ -1,4 +1,8 @@
+import 'package:aidkriya_walker/backend/walk_request_service.dart';
+import 'package:aidkriya_walker/model/walk_request.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 
 import 'components/duration_minute_picker.dart';
 import 'components/walk_detail_item.dart';
@@ -16,6 +20,11 @@ class RequestWalkScreen extends StatefulWidget {
 
 class _RequestWalkScreenState extends State<RequestWalkScreen> {
   int _currentIndex = 1;
+  String _currentTime = '';
+  String _currentDate = '';
+  Position? _currentPosition;
+  bool _isSending = false;
+  final userId = FirebaseAuth.instance.currentUser?.uid ?? 'guest';
 
   // Walk details data
   String selectedDate = 'May 20, 2024';
@@ -23,6 +32,57 @@ class _RequestWalkScreenState extends State<RequestWalkScreen> {
   String selectedDuration = 'Select duration';
   String selectedPace = 'Leisurely';
   String selectedLocation = 'Your Location';
+
+  final List<String> months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+
+  @override
+  void initState() {
+    _setCurrentDateTime();
+    _getCurrentLocation();
+    super.initState();
+  }
+
+  void _getCurrentLocation() async {
+    // Get the current position
+    Position position = await Geolocator.getCurrentPosition(
+      desiredAccuracy: LocationAccuracy.high,
+    );
+
+    setState(() {
+      _currentPosition = position;
+    });
+  }
+
+  void _setCurrentDateTime() {
+    DateTime now = DateTime.now();
+
+    // Format date like "May 20, 2024"
+    String month = months[now.month - 1];
+    _currentDate = "$month ${now.day}, ${now.year}";
+
+    // Format time like "3:00 PM"
+    int hour = now.hour;
+    String period = hour >= 12 ? "PM" : "AM";
+    hour = hour % 12;
+    if (hour == 0) hour = 12;
+    String minute = now.minute.toString().padLeft(2, '0');
+    _currentTime = "$hour:$minute $period";
+
+    setState(() {});
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -108,14 +168,14 @@ class _RequestWalkScreenState extends State<RequestWalkScreen> {
               WalkDetailItem(
                 icon: Icons.calendar_today,
                 label: 'Date',
-                value: selectedDate,
+                value: _currentDate,
                 onTap: () => _onDateTapped(),
               ),
               const Divider(height: 32),
               WalkDetailItem(
                 icon: Icons.access_time,
                 label: 'Time',
-                value: selectedTime,
+                value: _currentTime,
                 onTap: () => _onTimeTapped(),
               ),
               const Divider(height: 32),
@@ -144,7 +204,9 @@ class _RequestWalkScreenState extends State<RequestWalkScreen> {
       width: double.infinity,
       height: 56,
       child: ElevatedButton(
-        onPressed: _onSendRequestPressed,
+        onPressed: _isSending
+            ? null
+            : _onSendRequestPressed, // disable while sending
         style: ElevatedButton.styleFrom(
           backgroundColor: const Color(0xFF6BCBA6),
           foregroundColor: Colors.white,
@@ -153,10 +215,19 @@ class _RequestWalkScreenState extends State<RequestWalkScreen> {
             borderRadius: BorderRadius.circular(28),
           ),
         ),
-        child: const Text(
-          'Send Request',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-        ),
+        child: _isSending
+            ? const SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(
+                  color: Colors.white,
+                  strokeWidth: 2.5,
+                ),
+              )
+            : const Text(
+                'Send Request',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+              ),
       ),
     );
   }
@@ -199,19 +270,77 @@ class _RequestWalkScreenState extends State<RequestWalkScreen> {
     }
   }
 
-  void _onPaceTapped() {
-    print('Select pace');
-    // Show pace options
-  }
-
   void _onLocationTapped() {
     print('Select location');
     // Show location picker
   }
 
-  void _onSendRequestPressed() {
-    print('Send walk request to ${widget.walker.name}');
-    // Send request to API
-    // Show confirmation dialog
+  void _onSendRequestPressed() async {
+    if (selectedDuration == 'Select duration') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please select a duration for the walk.'),
+          backgroundColor: Colors.redAccent,
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
+    if (_currentPosition == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Unable to get your location. Please try again.'),
+          backgroundColor: Colors.redAccent,
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _isSending = true; // start loading
+    });
+
+    final req_service = WalkRequestService();
+    final req_data = WalkRequest(
+      id: userId,
+      longitude: _currentPosition!.longitude,
+      latitude: _currentPosition!.latitude,
+      date: _currentDate,
+      time: _currentTime,
+      duration: selectedDuration,
+      status: 'Pending',
+      walker: widget.walker,
+      notes: null,
+    );
+
+    try {
+      await req_service.sendRequest(req_data, userId, widget.walker.id);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Walk request sent successfully!'),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 2),
+        ),
+      );
+
+      setState(() {
+        selectedDuration = 'Select duration'; // reset duration
+      });
+    } catch (error) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to send request: $error'),
+          backgroundColor: Colors.redAccent,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    } finally {
+      setState(() {
+        _isSending = false; // stop loading
+      });
+    }
   }
 }

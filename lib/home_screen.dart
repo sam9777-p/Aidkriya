@@ -1,4 +1,5 @@
 import 'package:aidkriya_walker/backend/location_service.dart';
+import 'package:aidkriya_walker/profile_screen.dart';
 import 'package:aidkriya_walker/social_impact_card.dart';
 import 'package:aidkriya_walker/stats_card.dart';
 import 'package:aidkriya_walker/walker_of_the_week_card.dart';
@@ -6,6 +7,7 @@ import 'package:flutter/material.dart';
 
 import 'action_button.dart';
 import 'challenge_card.dart';
+import 'find_walker_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -38,11 +40,26 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F5F5),
-      body: SafeArea(
-        child: _currentIndex == 0 ? _buildHomeContent() : _buildPlaceholder(),
-      ),
+      body: SafeArea(child: _getCurrentScreen()),
       bottomNavigationBar: _buildBottomNavigationBar(),
     );
+  }
+
+  Widget _getCurrentScreen() {
+    switch (_currentIndex) {
+      case 0:
+        return _buildHomeContent(); // your existing home UI
+      case 1:
+        return const FindWalkerScreen(); // new screen for finding walkers
+      case 2:
+        return const Center(
+          child: Text('Community coming soon!', style: TextStyle(fontSize: 24)),
+        );
+      case 3:
+        return const ProfileScreen(); // your profile screen
+      default:
+        return const Center(child: Text('Unknown tab'));
+    }
   }
 
   Widget _buildHomeContent() {
@@ -273,7 +290,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _onFindWalkerPressed() {
-    print('Find walker pressed');
+    setState(() {
+      _currentIndex = 1;
+    });
   }
 
   void _onScheduleWalkPressed() {
