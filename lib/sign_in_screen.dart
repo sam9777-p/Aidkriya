@@ -30,8 +30,8 @@ class _SignInScreenState extends State<SignInScreen> {
   Widget build(BuildContext context) {
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
 
-    const Color primaryGreen = Color(0xFF20DF6C);
-    const Color fadedGreen =  Color(0xFFE8F5E9);
+    const Color primaryGreen = Color(0xFFA8D8B9);
+    const Color fadedGreen = Color(0xFFE8F5E9);
     const Color lightGrey = Color(0xFFE0E0E0);
     const Color backgroundLight = Color(0xFFF6F8F7);
     const Color backgroundDark = Color(0xFF112117);
@@ -41,7 +41,8 @@ class _SignInScreenState extends State<SignInScreen> {
     Color buttonHoverColor(Color baseColor) {
       return HSLColor.fromColor(baseColor)
           .withLightness(
-          (HSLColor.fromColor(baseColor).lightness * 0.8).clamp(0.3, 0.9))
+            (HSLColor.fromColor(baseColor).lightness * 0.8).clamp(0.3, 0.9),
+          )
           .toColor();
     }
 
@@ -49,7 +50,9 @@ class _SignInScreenState extends State<SignInScreen> {
       return InputDecoration(
         hintText: hint,
         hintStyle: TextStyle(
-            color: isDark ? Colors.grey[300] : Colors.black54, fontSize: 14),
+          color: isDark ? Colors.grey[300] : Colors.black54,
+          fontSize: 14,
+        ),
         filled: true,
         fillColor: focusNode.hasFocus
             ? (isDark ? fadedGreen.withOpacity(0.3) : fadedGreen)
@@ -62,8 +65,10 @@ class _SignInScreenState extends State<SignInScreen> {
           borderSide: const BorderSide(color: primaryGreen, width: 1.5),
           borderRadius: BorderRadius.circular(15),
         ),
-        contentPadding:
-        const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+        contentPadding: const EdgeInsets.symmetric(
+          vertical: 14,
+          horizontal: 16,
+        ),
       );
     }
 
@@ -77,7 +82,9 @@ class _SignInScreenState extends State<SignInScreen> {
           return Center(
             child: SingleChildScrollView(
               padding: EdgeInsets.symmetric(
-                  horizontal: isMobile ? 24 : width * 0.25, vertical: 32),
+                horizontal: isMobile ? 24 : width * 0.25,
+                vertical: 32,
+              ),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -88,9 +95,7 @@ class _SignInScreenState extends State<SignInScreen> {
                       shape: BoxShape.rectangle,
                       borderRadius: BorderRadius.all(Radius.circular(10)),
                       image: DecorationImage(
-                        image: AssetImage(
-                            "assets/images/logo.png"
-                        ),
+                        image: AssetImage("assets/images/logo.png"),
                         fit: BoxFit.cover,
                       ),
                     ),
@@ -111,8 +116,9 @@ class _SignInScreenState extends State<SignInScreen> {
                     "Walk together, make a difference.",
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                        color: isDark ? Colors.grey[300] : Colors.black54,
-                        fontSize: isMobile ? 14 : 16),
+                      color: isDark ? Colors.grey[300] : Colors.black54,
+                      fontSize: isMobile ? 14 : 16,
+                    ),
                   ),
                   const SizedBox(height: 30),
 
@@ -122,8 +128,7 @@ class _SignInScreenState extends State<SignInScreen> {
                     child: TextField(
                       controller: _emailController,
                       focusNode: _emailFocus,
-                      style:
-                      TextStyle(color: isDark ? textDark : Colors.black),
+                      style: TextStyle(color: isDark ? textDark : Colors.black),
                       decoration: buildInputDecoration("Email", _emailFocus),
                     ),
                   ),
@@ -136,9 +141,11 @@ class _SignInScreenState extends State<SignInScreen> {
                       controller: _passwordController,
                       focusNode: _passwordFocus,
                       obscureText: true,
-                      style:
-                      TextStyle(color: isDark ? textDark : Colors.black),
-                      decoration: buildInputDecoration("Password", _passwordFocus),
+                      style: TextStyle(color: isDark ? textDark : Colors.black),
+                      decoration: buildInputDecoration(
+                        "Password",
+                        _passwordFocus,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 24),
@@ -162,14 +169,18 @@ class _SignInScreenState extends State<SignInScreen> {
                           ),
                           elevation: _isGoogleHovered ? 8 : 4,
                         ),
-                        icon: const Icon(Icons.g_mobiledata_rounded,
-                            color: Colors.white, size: 28),
+                        icon: const Icon(
+                          Icons.g_mobiledata_rounded,
+                          color: Colors.white,
+                          size: 28,
+                        ),
                         label: const Text(
                           "Sign in with Google",
                           style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16),
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
                         ),
                       ),
                     ),
@@ -179,20 +190,24 @@ class _SignInScreenState extends State<SignInScreen> {
                   Row(
                     children: [
                       Expanded(
-                          child: Divider(
-                              color: isDark ? Colors.grey[700] : Colors.grey)),
+                        child: Divider(
+                          color: isDark ? Colors.grey[700] : Colors.grey,
+                        ),
+                      ),
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 8.0),
                         child: Text(
                           "Or",
                           style: TextStyle(
-                              color:
-                              isDark ? Colors.grey[300] : Colors.black87),
+                            color: isDark ? Colors.grey[300] : Colors.black87,
+                          ),
                         ),
                       ),
                       Expanded(
-                          child: Divider(
-                              color: isDark ? Colors.grey[700] : Colors.grey)),
+                        child: Divider(
+                          color: isDark ? Colors.grey[700] : Colors.grey,
+                        ),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 16),
@@ -215,14 +230,17 @@ class _SignInScreenState extends State<SignInScreen> {
                           ),
                           elevation: _isEmailHovered ? 8 : 4,
                         ),
-                        icon:
-                        const Icon(Icons.mail_outline, color: Colors.white),
+                        icon: const Icon(
+                          Icons.mail_outline,
+                          color: Colors.white,
+                        ),
                         label: const Text(
                           "Sign in with Email",
                           style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16),
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
                         ),
                       ),
                     ),
@@ -238,7 +256,8 @@ class _SignInScreenState extends State<SignInScreen> {
                           TextSpan(
                             text: "Don't have an account? ",
                             style: TextStyle(
-                                color: isDark ? textDark : Colors.black),
+                              color: isDark ? textDark : Colors.black,
+                            ),
                             children: [
                               TextSpan(
                                 text: "Sign Up",
@@ -261,8 +280,9 @@ class _SignInScreenState extends State<SignInScreen> {
                   Text(
                     "Terms of Service · Privacy Policy",
                     style: TextStyle(
-                        color: isDark ? Colors.grey[400] : Colors.grey,
-                        fontSize: 12),
+                      color: isDark ? Colors.grey[400] : Colors.grey,
+                      fontSize: 12,
+                    ),
                     textAlign: TextAlign.center,
                   ),
                 ],

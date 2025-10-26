@@ -1,3 +1,4 @@
+import 'package:aidkriya_walker/backend/location_service.dart';
 import 'package:aidkriya_walker/social_impact_card.dart';
 import 'package:aidkriya_walker/stats_card.dart';
 import 'package:aidkriya_walker/walker_of_the_week_card.dart';
@@ -18,6 +19,20 @@ class _HomeScreenState extends State<HomeScreen> {
   int stepsToday = 8500;
   int walksCompleted = 12;
   int socialImpact = 250;
+
+  final locationService = LocationService();
+
+  @override
+  void initState() {
+    locationService.startTracking(context);
+    super.initState();
+  }
+
+  @override
+  void dispose() {
+    locationService.stopTracking();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
