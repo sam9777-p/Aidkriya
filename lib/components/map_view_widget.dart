@@ -1,10 +1,9 @@
+import 'package:aidkriya_walker/model/walker_list_early.dart';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
-import '../model/Walker.dart';
-
 class MapViewWidget extends StatefulWidget {
-  final List<Walker> walkers;
+  final List<WalkerListEarly> walkers;
   final ValueChanged<String> onMarkerTapped;
 
   const MapViewWidget({

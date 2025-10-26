@@ -1,7 +1,7 @@
 class Walker {
   final String id;
-  final String name;
-  final double rating;
+  final String? name;
+  final double? rating;
   final double distance;
   final String? imageUrl;
   final double latitude;

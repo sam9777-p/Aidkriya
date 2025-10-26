@@ -57,7 +57,9 @@ class _SignInScreenState extends State<SignInScreen> {
         default:
           message = e.message ?? 'Sign-in failed.';
       }
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
     } finally {
       setState(() => _isLoading = false);
     }
@@ -73,7 +75,7 @@ class _SignInScreenState extends State<SignInScreen> {
       }
 
       final GoogleSignInAuthentication googleAuth =
-      await googleUser.authentication;
+          await googleUser.authentication;
 
       final credential = GoogleAuthProvider.credential(
         idToken: googleAuth.idToken,
@@ -87,9 +89,9 @@ class _SignInScreenState extends State<SignInScreen> {
       );
       // TODO: Navigate to dashboard/home here
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Google Sign-in failed: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Google Sign-in failed: $e')));
     } finally {
       setState(() => _isLoading = false);
     }
@@ -99,7 +101,7 @@ class _SignInScreenState extends State<SignInScreen> {
   Widget build(BuildContext context) {
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
 
-    const Color primaryGreen = Color(0xFF20DF6C);
+    const Color primaryGreen = Color(0xFF6BCBA6);
     const Color fadedGreen = Color(0xFFE8F5E9);
     const Color lightGrey = Color(0xFFE0E0E0);
     const Color backgroundDark = Color(0xFF112117);
@@ -109,13 +111,16 @@ class _SignInScreenState extends State<SignInScreen> {
     Color buttonHoverColor(Color baseColor) {
       return HSLColor.fromColor(baseColor)
           .withLightness(
-        (HSLColor.fromColor(baseColor).lightness * 0.8).clamp(0.3, 0.9),
-      )
+            (HSLColor.fromColor(baseColor).lightness * 0.8).clamp(0.3, 0.9),
+          )
           .toColor();
     }
 
-    InputDecoration buildInputDecoration(String hint, FocusNode focusNode,
-        {bool isPassword = false}) {
+    InputDecoration buildInputDecoration(
+      String hint,
+      FocusNode focusNode, {
+      bool isPassword = false,
+    }) {
       return InputDecoration(
         hintText: hint,
         hintStyle: TextStyle(
@@ -134,23 +139,23 @@ class _SignInScreenState extends State<SignInScreen> {
           borderSide: const BorderSide(color: primaryGreen, width: 1.5),
           borderRadius: BorderRadius.circular(15),
         ),
-        contentPadding:
-        const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+        contentPadding: const EdgeInsets.symmetric(
+          vertical: 14,
+          horizontal: 16,
+        ),
 
         suffixIcon: isPassword
             ? IconButton(
-          icon: Icon(
-            _isPasswordVisible
-                ? Icons.visibility
-                : Icons.visibility_off,
-            color: isDark ? Colors.white70 : Colors.black54,
-          ),
-          onPressed: () {
-            setState(() {
-              _isPasswordVisible = !_isPasswordVisible;
-            });
-          },
-        )
+                icon: Icon(
+                  _isPasswordVisible ? Icons.visibility : Icons.visibility_off,
+                  color: isDark ? Colors.white70 : Colors.black54,
+                ),
+                onPressed: () {
+                  setState(() {
+                    _isPasswordVisible = !_isPasswordVisible;
+                  });
+                },
+              )
             : null,
       );
     }
@@ -211,10 +216,13 @@ class _SignInScreenState extends State<SignInScreen> {
                         child: TextField(
                           controller: _emailController,
                           focusNode: _emailFocus,
-                          style:
-                          TextStyle(color: isDark ? textDark : Colors.black),
-                          decoration:
-                          buildInputDecoration("Email", _emailFocus),
+                          style: TextStyle(
+                            color: isDark ? textDark : Colors.black,
+                          ),
+                          decoration: buildInputDecoration(
+                            "Email",
+                            _emailFocus,
+                          ),
                         ),
                       ),
                       const SizedBox(height: 16),
@@ -224,10 +232,10 @@ class _SignInScreenState extends State<SignInScreen> {
                         child: TextField(
                           controller: _passwordController,
                           focusNode: _passwordFocus,
-                          obscureText:
-                          !_isPasswordVisible,
-                          style:
-                          TextStyle(color: isDark ? textDark : Colors.black),
+                          obscureText: !_isPasswordVisible,
+                          style: TextStyle(
+                            color: isDark ? textDark : Colors.black,
+                          ),
                           decoration: buildInputDecoration(
                             "Password",
                             _passwordFocus,
@@ -251,14 +259,18 @@ class _SignInScreenState extends State<SignInScreen> {
                               borderRadius: BorderRadius.circular(15),
                             ),
                           ),
-                          icon: const Icon(Icons.g_mobiledata_rounded,
-                              color: Colors.white, size: 28),
+                          icon: const Icon(
+                            Icons.g_mobiledata_rounded,
+                            color: Colors.white,
+                            size: 28,
+                          ),
                           label: const Text(
                             "Sign in with Google",
                             style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16),
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
                           ),
                         ),
                       ),
@@ -272,8 +284,9 @@ class _SignInScreenState extends State<SignInScreen> {
                             ),
                           ),
                           Padding(
-                            padding:
-                            const EdgeInsets.symmetric(horizontal: 8.0),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8.0,
+                            ),
                             child: Text(
                               "Or",
                               style: TextStyle(
@@ -306,8 +319,10 @@ class _SignInScreenState extends State<SignInScreen> {
                               borderRadius: BorderRadius.circular(15),
                             ),
                           ),
-                          icon: const Icon(Icons.mail_outline_rounded,
-                              color: Colors.white),
+                          icon: const Icon(
+                            Icons.mail_outline_rounded,
+                            color: Colors.white,
+                          ),
                           label: const Text(
                             "Sign in with Email",
                             style: TextStyle(
@@ -328,14 +343,16 @@ class _SignInScreenState extends State<SignInScreen> {
                             Navigator.pushReplacement(
                               context,
                               MaterialPageRoute(
-                                  builder: (context) => const SignUpScreen()),
+                                builder: (context) => const SignUpScreen(),
+                              ),
                             );
                           },
                           child: Text.rich(
                             TextSpan(
                               text: "Don't have an account? ",
                               style: TextStyle(
-                                  color: isDark ? textDark : Colors.black),
+                                color: isDark ? textDark : Colors.black,
+                              ),
                               children: [
                                 TextSpan(
                                   text: "Sign Up",

@@ -1,12 +1,12 @@
 import 'package:aidkriya_walker/components/request_button.dart';
 import 'package:aidkriya_walker/components/walker_avatar.dart';
+import 'package:aidkriya_walker/model/walker_list_early.dart';
 import 'package:flutter/material.dart';
 
-import '../model/Walker.dart';
 import 'instant_walk_button.dart';
 
 class WalkerCard extends StatelessWidget {
-  final Walker walker;
+  final WalkerListEarly walker;
   final bool showInstantWalk;
   final VoidCallback onRequestPressed;
   final VoidCallback? onInstantWalkPressed;
@@ -37,14 +37,17 @@ class WalkerCard extends StatelessWidget {
       ),
       child: Row(
         children: [
-          WalkerAvatar(imageUrl: walker.imageUrl, size: 60),
+          WalkerAvatar(
+            imageUrl: null,
+            size: 60,
+          ), // yha pe null ki jagah imgUrl daalni hai
           const SizedBox(width: 16),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  walker.name,
+                  walker.id,
                   style: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
@@ -57,7 +60,8 @@ class WalkerCard extends StatelessWidget {
                     const Icon(Icons.star, size: 16, color: Color(0xFFFFD700)),
                     const SizedBox(width: 4),
                     Text(
-                      walker.rating.toString(),
+                      // walker.rating.toString(),
+                      '0', // upar jo comment out hai use krna use
                       style: TextStyle(
                         fontSize: 14,
                         color: Colors.grey[700],

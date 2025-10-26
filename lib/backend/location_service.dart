@@ -29,8 +29,8 @@ class LocationService with WidgetsBindingObserver {
           ),
         ).listen((Position position) {
           dbRef.child(userId).update({
-            'lat': position.latitude,
-            'lng': position.longitude,
+            'latitude': position.latitude,
+            'longitude': position.longitude,
           });
         });
   }

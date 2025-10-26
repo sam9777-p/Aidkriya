@@ -1,10 +1,16 @@
-import 'package:flutter/material.dart';
+import 'dart:async';
+import 'dart:developer' as developer;
 
+import 'package:firebase_database/firebase_database.dart';
+import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+
+import 'backend/location_service.dart';
 import 'components/map_view_widget.dart';
-import 'components/search_bar_widget.dart';
 import 'components/view_toggle.dart';
 import 'components/walker_card.dart';
-import 'model/Walker.dart';
+import 'model/walker_list_early.dart';
 
 class FindWalkerScreen extends StatefulWidget {
   const FindWalkerScreen({super.key});
@@ -14,45 +20,67 @@ class FindWalkerScreen extends StatefulWidget {
 }
 
 class _FindWalkerScreenState extends State<FindWalkerScreen> {
+  StreamSubscription? _walkerSub;
+  Position? myPos;
+  Set<Marker> _markers = {};
+  List<WalkerListEarly> walkers = [];
+
   bool isMapView = true;
   final TextEditingController _searchController = TextEditingController();
   final DraggableScrollableController _sheetController =
       DraggableScrollableController();
 
-  final List<Walker> walkers = [
-    Walker(
-      id: '1',
-      name: 'Riya S.',
-      rating: 4.8,
-      distance: 0.8,
-      imageUrl: null,
-      latitude: 37.7749,
-      longitude: -122.4194,
-    ),
-    Walker(
-      id: '2',
-      name: 'Ken T.',
-      rating: 4.9,
-      distance: 1.2,
-      imageUrl: null,
-      latitude: 37.7849,
-      longitude: -122.4094,
-    ),
-    Walker(
-      id: '3',
-      name: 'Kdds T.',
-      rating: 4.6,
-      distance: 3.2,
-      imageUrl: null,
-      latitude: 37.7649,
-      longitude: -122.4294,
-    ),
-  ];
+  // final List<Walker> walkers = [
+  //   Walker(
+  //     id: '1',
+  //     name: 'Riya S.',
+  //     rating: 4.8,
+  //     distance: 0.8,
+  //     imageUrl: null,
+  //     latitude: 37.7749,
+  //     longitude: -122.4194,
+  //   ),
+  //   Walker(
+  //     id: '2',
+  //     name: 'Ken T.',
+  //     rating: 4.9,
+  //     distance: 1.2,
+  //     imageUrl: null,
+  //     latitude: 37.7849,
+  //     longitude: -122.4094,
+  //   ),
+  //   Walker(
+  //     id: '3',
+  //     name: 'Kdds T.',
+  //     rating: 4.6,
+  //     distance: 3.2,
+  //     imageUrl: null,
+  //     latitude: 37.7649,
+  //     longitude: -122.4294,
+  //   ),
+  // ];
+
+  final locationService = LocationService();
+
+  @override
+  void initState() {
+    locationService.startTracking(context);
+    _startListeningToWalkers();
+    super.initState();
+  }
 
   @override
   void dispose() {
+    locationService.stopTracking();
     _searchController.dispose();
+    _walkerSub?.cancel();
     super.dispose();
+  }
+
+  @override
+  void setState(VoidCallback fn) {
+    // TODO: implement setState
+    super.setState(fn);
   }
 
   @override
@@ -62,7 +90,6 @@ class _FindWalkerScreenState extends State<FindWalkerScreen> {
       appBar: _buildAppBar(),
       body: Column(
         children: [
-          _buildSearchBar(),
           _buildViewToggle(),
           Expanded(child: isMapView ? _buildMapScreen() : _buildListViewOnly()),
         ],
@@ -194,24 +221,6 @@ class _FindWalkerScreenState extends State<FindWalkerScreen> {
           fontWeight: FontWeight.bold,
         ),
       ),
-      centerTitle: true,
-      actions: [
-        IconButton(
-          icon: const Icon(Icons.tune, color: Colors.black),
-          onPressed: _onFilterPressed,
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSearchBar() {
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: SearchBarWidget(
-        controller: _searchController,
-        hintText: 'Search by name or interest',
-        onChanged: _onSearchChanged,
-      ),
     );
   }
 
@@ -252,13 +261,109 @@ class _FindWalkerScreenState extends State<FindWalkerScreen> {
     );
   }
 
+  Stream<List<WalkerListEarly>> listenToActiveWalkers() async* {
+    final ref = FirebaseDatabase.instance.ref('locations');
+
+    await for (final event in ref.onValue) {
+      final data = event.snapshot.value as Map?;
+      developer.log("Raw snapshot: $data", name: "FirebaseListener");
+
+      if (data == null) {
+        developer.log("No data found.", name: "FirebaseListener");
+        yield [];
+        continue;
+      }
+
+      List<WalkerListEarly> activeWalkers = [];
+
+      data.forEach((key, value) {
+        developer.log("Walker node $key: $value", name: "FirebaseListener");
+
+        final walker = WalkerListEarly.fromMap(
+          key,
+          Map<String, dynamic>.from(value),
+        );
+
+        if (walker.active) {
+          activeWalkers.add(walker);
+        }
+      });
+
+      developer.log(
+        "Active walkers: ${activeWalkers.length}",
+        name: "FirebaseListener",
+      );
+      yield activeWalkers;
+    }
+  }
+
+  void _startListeningToWalkers() async {
+    myPos = await Geolocator.getCurrentPosition();
+
+    _walkerSub = listenToActiveWalkers().listen((activeWalkers) async {
+      // Filter nearby (<= 5 km)
+      final nearbyWalkers = await getNearbyWalkers(myPos!, activeWalkers);
+
+      // Update map markers
+      _updateMarkers(nearbyWalkers);
+    });
+  }
+
+  Future<List<WalkerListEarly>> getNearbyWalkers(
+    Position myPos,
+    List<WalkerListEarly> allWalkers,
+  ) async {
+    const double maxDistanceKm = 5;
+
+    List<WalkerListEarly> nearby = [];
+
+    for (var walker in allWalkers) {
+      double distance =
+          Geolocator.distanceBetween(
+            myPos.latitude,
+            myPos.longitude,
+            walker.latitude,
+            walker.longitude,
+          ) /
+          1000;
+
+      if (distance <= maxDistanceKm) {
+        walker.distance = distance; // attach distance
+        nearby.add(walker);
+      }
+    }
+
+    nearby.sort((a, b) => a.distance!.compareTo(b.distance!));
+
+    return nearby;
+  }
+
+  void _updateMarkers(List<WalkerListEarly> nearbyWalkers) {
+    final newMarkers = <Marker>{};
+    for (var walker in nearbyWalkers) {
+      newMarkers.add(
+        Marker(
+          markerId: MarkerId(walker.id),
+          position: LatLng(walker.latitude, walker.longitude),
+          infoWindow: InfoWindow(title: 'Walker: ${walker.id}'),
+        ),
+      );
+    }
+
+    setState(() {
+      _markers = newMarkers;
+      walkers = nearbyWalkers;
+      print(nearbyWalkers);
+    });
+  }
+
   // 🔹 Callbacks / Logic Hooks
   void _onFilterPressed() => print('Filter pressed');
   void _onSearchChanged(String value) => print('Search: $value');
   void _onMarkerTapped(String walkerId) => print('Marker tapped: $walkerId');
-  void _onRequestPressed(Walker walker) =>
-      print('Request walker: ${walker.name}');
-  void _onInstantWalkPressed(Walker walker) =>
-      print('Instant walk with: ${walker.name}');
+  void _onRequestPressed(WalkerListEarly walker) =>
+      print('Request walker: ${walker.id}');
+  void _onInstantWalkPressed(WalkerListEarly walker) =>
+      print('Instant walk with: ${walker.id}');
   void _onScheduleWalkPressed() => print('Schedule walk pressed');
 }
