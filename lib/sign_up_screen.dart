@@ -3,6 +3,8 @@ import 'package:aidkriya_walker/sign_in_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 
 class SignUpScreen extends StatefulWidget {
   const SignUpScreen({super.key});
@@ -27,6 +29,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   bool _isPasswordVisible = false;
 
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   @override
   void dispose() {
@@ -37,6 +40,19 @@ class _SignUpScreenState extends State<SignUpScreen> {
     _emailFocus.dispose();
     _passwordFocus.dispose();
     super.dispose();
+  }
+
+  void _initializeTokenListener(String uid) {
+    FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async {
+      try {
+        await _firestore.collection('users').doc(uid).set(
+          {'fcmToken': newToken},
+          SetOptions(merge: true),
+        );
+      } catch (e) {
+        debugPrint("Failed to update refreshed FCM token: $e");
+      }
+    });
   }
 
   Future<void> _signUpWithEmail() async {
@@ -52,50 +68,60 @@ class _SignUpScreenState extends State<SignUpScreen> {
     setState(() => _isLoading = true);
 
     try {
-      print("🔄 Starting signup process...");
-      print("📧 Email: $email");
-      print("👤 Name: $name");
+      debugPrint("🔄 Starting signup process...");
+      debugPrint("📧 Email: $email");
+      debugPrint("👤 Name: $name");
 
       final userCredential = await _auth.createUserWithEmailAndPassword(
         email: email,
         password: password,
       );
 
-      print("✅ User credential created: ${userCredential.user?.uid}");
+      debugPrint("✅ User credential created: ${userCredential.user?.uid}");
 
       if (userCredential.user == null) {
         throw Exception("User credential is null");
       }
 
-      // Store user details before any reload operations
       final userId = userCredential.user!.uid;
       final userEmail = userCredential.user!.email ?? email;
 
-      // Update display name without reloading
       try {
         await userCredential.user!.updateDisplayName(name);
-        print("✅ Display name updated");
+        debugPrint("Display name updated");
       } catch (e) {
-        print("⚠️ Could not update display name: $e");
-        // Continue anyway, we'll use the name from the form
+        debugPrint("Could not update display name: $e");
       }
 
-      print("✅ Account created: $userId");
-      print("✅ Email: $userEmail");
-      print("✅ Name: $name");
-
-      // Check if widget is still mounted before navigation
-      if (!mounted) {
-        print("⚠️ Widget not mounted, skipping navigation");
-        return;
+      // get FCM token
+      String? fcmToken;
+      try {
+        fcmToken = await FirebaseMessaging.instance.getToken();
+      } catch (e) {
+        debugPrint("Warning: couldn't get FCM token: $e");
+        fcmToken = null;
       }
 
-      // Clear loading state before navigation
+      try {
+        await _firestore.collection('users').doc(userId).set({
+          'name': name,
+          'email': userEmail,
+          if (fcmToken != null) 'fcmToken': fcmToken,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+      } catch (e) {
+        debugPrint("Failed writing user doc: $e");
+      }
+
+      _initializeTokenListener(userId);
+
+      _showSnackBar('Account created successfully!');
+
+      if (!mounted) return;
       setState(() => _isLoading = false);
 
-      print("🚀 Attempting navigation...");
+      debugPrint(" Attempting navigation to SetupFlowScreen...");
 
-      // Navigate to setup flow using stored values instead of reloading user
       await Navigator.pushReplacement(
         context,
         MaterialPageRoute(
@@ -107,10 +133,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
         ),
       );
 
-      print("✅ Navigation completed");
+      debugPrint("✅ Navigation completed");
     } on FirebaseAuthException catch (e) {
-      print("❌ Firebase error code: ${e.code}");
-      print("❌ Firebase error message: ${e.message}");
+      debugPrint("Firebase error code: ${e.code}");
+      debugPrint("Firebase error message: ${e.message}");
       if (!mounted) return;
       setState(() => _isLoading = false);
 
@@ -130,9 +156,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
       }
       _showSnackBar(errorMessage);
     } catch (e, stackTrace) {
-      print("❌ Unexpected error type: ${e.runtimeType}");
-      print("❌ Unexpected error: $e");
-      print("❌ Stack trace: $stackTrace");
+      debugPrint("Unexpected error type: ${e.runtimeType}");
+      debugPrint("Unexpected error: $e");
+      debugPrint("Stack trace: $stackTrace");
       if (!mounted) return;
       setState(() => _isLoading = false);
       _showSnackBar('Error: ${e.toString()}');
@@ -153,7 +179,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
       }
 
       final GoogleSignInAuthentication googleAuth =
-          await googleUser.authentication;
+      await googleUser.authentication;
 
       final credential = GoogleAuthProvider.credential(
         accessToken: googleAuth.accessToken,
@@ -162,19 +188,49 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
       final userCredential = await _auth.signInWithCredential(credential);
 
-      // Store user details immediately without reloading
       final userId = userCredential.user!.uid;
       final userEmail = userCredential.user!.email ?? googleUser.email;
       final userName =
           userCredential.user?.displayName ?? googleUser.displayName ?? "";
 
-      print("✅ Google sign-in success: $userId");
-      print("✅ Name: $userName");
-      print("✅ Email: $userEmail");
+      debugPrint("Google sign-in success: $userId");
+      debugPrint("Name: $userName");
+      debugPrint("Email: $userEmail");
+
+      String? fcmToken;
+      try {
+        fcmToken = await FirebaseMessaging.instance.getToken();
+      } catch (e) {
+        debugPrint("Warning: couldn't get FCM token: $e");
+        fcmToken = null;
+      }
+
+      final userDocRef = _firestore.collection('users').doc(userId);
+      final existing = await userDocRef.get();
+
+      if (!existing.exists) {
+        await userDocRef.set({
+          'name': userName,
+          'email': userEmail,
+          if (fcmToken != null) 'fcmToken': fcmToken,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+      } else {
+
+        final Map<String, dynamic> updateMap = {
+          if (fcmToken != null) 'fcmToken': fcmToken,
+        };
+        if ((existing.data()?['name'] ?? '').toString().isEmpty &&
+            userName.isNotEmpty) {
+          updateMap['name'] = userName;
+        }
+        if (updateMap.isNotEmpty) {
+          await userDocRef.set(updateMap, SetOptions(merge: true));
+        }
+      }
+      _initializeTokenListener(userId);
 
       if (!mounted) return;
-
-      // Clear loading state before navigation
       setState(() => _isLoading = false);
 
       await Navigator.pushReplacement(
@@ -190,12 +246,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
       _showSnackBar('Signed in with Google!');
     } on FirebaseAuthException catch (e) {
-      print("❌ Google sign-in error: ${e.code} - ${e.message}");
+      debugPrint(" Google sign-in error: ${e.code} - ${e.message}");
       if (!mounted) return;
       setState(() => _isLoading = false);
       _showSnackBar(e.message ?? 'Google sign-in failed.');
     } catch (e) {
-      print("❌ Unexpected error: $e");
+      debugPrint(" Unexpected error: $e");
       if (!mounted) return;
       setState(() => _isLoading = false);
       _showSnackBar('An unexpected error occurred.');
@@ -227,16 +283,16 @@ class _SignUpScreenState extends State<SignUpScreen> {
     Color buttonHoverColor(Color baseColor) {
       return HSLColor.fromColor(baseColor)
           .withLightness(
-            (HSLColor.fromColor(baseColor).lightness * 0.8).clamp(0.3, 0.9),
-          )
+        (HSLColor.fromColor(baseColor).lightness * 0.8).clamp(0.3, 0.9),
+      )
           .toColor();
     }
 
     InputDecoration buildInputDecoration(
-      String hint,
-      FocusNode focusNode, {
-      Widget? suffixIcon,
-    }) {
+        String hint,
+        FocusNode focusNode, {
+          Widget? suffixIcon,
+        }) {
       return InputDecoration(
         hintText: hint,
         hintStyle: TextStyle(
@@ -255,10 +311,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
           borderSide: const BorderSide(color: primaryGreen, width: 1.5),
           borderRadius: BorderRadius.circular(15),
         ),
-        contentPadding: const EdgeInsets.symmetric(
-          vertical: 14,
-          horizontal: 16,
-        ),
+        contentPadding:
+        const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
         suffixIcon: suffixIcon,
       );
     }
@@ -320,13 +374,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
                         child: TextField(
                           controller: _nameController,
                           focusNode: _nameFocus,
-                          style: TextStyle(
-                            color: isDark ? textDark : Colors.black,
-                          ),
-                          decoration: buildInputDecoration(
-                            "Full Name",
-                            _nameFocus,
-                          ),
+                          style:
+                          TextStyle(color: isDark ? textDark : Colors.black),
+                          decoration:
+                          buildInputDecoration("Full Name", _nameFocus),
                         ),
                       ),
                       const SizedBox(height: 16),
@@ -336,13 +387,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
                         child: TextField(
                           controller: _emailController,
                           focusNode: _emailFocus,
-                          style: TextStyle(
-                            color: isDark ? textDark : Colors.black,
-                          ),
-                          decoration: buildInputDecoration(
-                            "Email",
-                            _emailFocus,
-                          ),
+                          style:
+                          TextStyle(color: isDark ? textDark : Colors.black),
+                          decoration:
+                          buildInputDecoration("Email", _emailFocus),
                         ),
                       ),
                       const SizedBox(height: 16),
@@ -353,9 +401,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
                           controller: _passwordController,
                           focusNode: _passwordFocus,
                           obscureText: !_isPasswordVisible,
-                          style: TextStyle(
-                            color: isDark ? textDark : Colors.black,
-                          ),
+                          style:
+                          TextStyle(color: isDark ? textDark : Colors.black),
                           decoration: buildInputDecoration(
                             "Password",
                             _passwordFocus,
@@ -397,18 +444,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
                               ),
                               elevation: _isGoogleHovered ? 8 : 4,
                             ),
-                            icon: const Icon(
-                              Icons.g_mobiledata_rounded,
-                              color: Colors.white,
-                              size: 28,
-                            ),
+                            icon: const Icon(Icons.g_mobiledata_rounded,
+                                color: Colors.white, size: 28),
                             label: const Text(
                               "Sign up with Google",
                               style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
-                              ),
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16),
                             ),
                           ),
                         ),
@@ -418,28 +461,24 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       Row(
                         children: [
                           Expanded(
-                            child: Divider(
-                              color: isDark ? Colors.grey[700] : Colors.grey,
-                            ),
-                          ),
+                              child: Divider(
+                                  color:
+                                  isDark ? Colors.grey[700] : Colors.grey)),
                           Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8.0,
-                            ),
+                            padding:
+                            const EdgeInsets.symmetric(horizontal: 8.0),
                             child: Text(
                               "Or",
                               style: TextStyle(
-                                color: isDark
-                                    ? Colors.grey[300]
-                                    : Colors.black87,
+                                color:
+                                isDark ? Colors.grey[300] : Colors.black87,
                               ),
                             ),
                           ),
                           Expanded(
-                            child: Divider(
-                              color: isDark ? Colors.grey[700] : Colors.grey,
-                            ),
-                          ),
+                              child: Divider(
+                                  color:
+                                  isDark ? Colors.grey[700] : Colors.grey)),
                         ],
                       ),
                       const SizedBox(height: 16),
@@ -462,17 +501,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
                               ),
                               elevation: _isEmailHovered ? 8 : 4,
                             ),
-                            icon: const Icon(
-                              Icons.person_add_alt_1,
-                              color: Colors.white,
-                            ),
+                            icon: const Icon(Icons.person_add_alt_1,
+                                color: Colors.white),
                             label: const Text(
                               "Sign up with Email",
                               style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
-                              ),
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16),
                             ),
                           ),
                         ),
@@ -487,16 +523,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
                             Navigator.pushReplacement(
                               context,
                               MaterialPageRoute(
-                                builder: (context) => const SignInScreen(),
-                              ),
+                                  builder: (context) => const SignInScreen()),
                             );
                           },
                           child: Text.rich(
                             TextSpan(
                               text: "Already have an account? ",
                               style: TextStyle(
-                                color: isDark ? textDark : Colors.black,
-                              ),
+                                  color: isDark ? textDark : Colors.black),
                               children: [
                                 TextSpan(
                                   text: "Sign In",
@@ -519,9 +553,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       Text(
                         "Terms of Service · Privacy Policy",
                         style: TextStyle(
-                          color: isDark ? Colors.grey[400] : Colors.grey,
-                          fontSize: 12,
-                        ),
+                            color: isDark ? Colors.grey[400] : Colors.grey,
+                            fontSize: 12),
                         textAlign: TextAlign.center,
                       ),
                     ],

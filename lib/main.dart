@@ -1,13 +1,51 @@
 import 'package:aidkriya_walker/sign_up_screen.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 
 import 'firebase_options.dart';
 
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  FirebaseMessaging messaging = FirebaseMessaging.instance;
+  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+  await messaging.requestPermission();
+
+  final user = FirebaseAuth.instance.currentUser;
+  if (user != null) {
+    _updateFcmToken(user.uid);
+  }
+
+  FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      await _updateFcmToken(user.uid, newToken);
+    }
+  });
+
   runApp(const MyApp());
+}
+
+Future<void> _updateFcmToken(String uid, [String? token]) async {
+  try {
+    final fcmToken = token ?? await FirebaseMessaging.instance.getToken();
+    if (fcmToken != null) {
+      await FirebaseFirestore.instance.collection('users').doc(uid).update({
+        'fcmToken': fcmToken,
+        'lastTokenUpdate': FieldValue.serverTimestamp(),
+      });
+      debugPrint(" FCM token updated for $uid");
+    }
+  } catch (e) {
+    debugPrint("Error updating FCM token: $e");
+  }
 }
 
 class MyApp extends StatelessWidget {
@@ -24,7 +62,7 @@ class MyApp extends StatelessWidget {
         scaffoldBackgroundColor: Colors.white,
         fontFamily: 'SF Pro',
       ),
-      home: SignUpScreen(),
+      home: const SignUpScreen(),
     );
   }
 }

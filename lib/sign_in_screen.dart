@@ -1,4 +1,7 @@
 import 'package:aidkriya_walker/sign_up_screen.dart';
+import 'package:aidkriya_walker/walker_home.dart';
+import 'package:aidkriya_walker/wanderer_home.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
@@ -20,7 +23,7 @@ class _SignInScreenState extends State<SignInScreen> {
   bool _isEmailHovered = false;
   bool _isSignUpHovered = false;
   bool _isLoading = false;
-  bool _isPasswordVisible = false; // 👈 NEW — controls password visibility
+  bool _isPasswordVisible = false;
 
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
@@ -41,10 +44,27 @@ class _SignInScreenState extends State<SignInScreen> {
         password: _passwordController.text.trim(),
       );
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Welcome, ${userCredential.user?.email}!')),
-      );
-      // TODO: Navigate to dashboard/home here
+      final user = userCredential.user;
+      if (user != null) {
+        final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+        final role = doc.data()?['role'] ?? 'walker';
+
+        if (role == 'Walker') {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => const WalkerHome()),
+          );
+        } else if (role == 'Wanderer') {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => const WandererHome()),
+          );
+        }
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Welcome, ${user.email}!')),
+        );
+      }
     } on FirebaseAuthException catch (e) {
       String message;
       switch (e.code) {
@@ -57,13 +77,12 @@ class _SignInScreenState extends State<SignInScreen> {
         default:
           message = e.message ?? 'Sign-in failed.';
       }
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(message)));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
     } finally {
       setState(() => _isLoading = false);
     }
   }
+
 
   Future<void> _signInWithGoogle() async {
     setState(() => _isLoading = true);
@@ -74,28 +93,54 @@ class _SignInScreenState extends State<SignInScreen> {
         return;
       }
 
-      final GoogleSignInAuthentication googleAuth =
-          await googleUser.authentication;
+      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
 
       final credential = GoogleAuthProvider.credential(
         idToken: googleAuth.idToken,
         accessToken: googleAuth.accessToken,
       );
 
-      await _auth.signInWithCredential(credential);
+      final userCredential = await _auth.signInWithCredential(credential);
+      final user = userCredential.user;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Signed in with Google successfully!')),
-      );
-      // TODO: Navigate to dashboard/home here
+      if (user != null) {
+        final userDoc = FirebaseFirestore.instance.collection('users').doc(user.uid);
+        final snapshot = await userDoc.get();
+
+        if (!snapshot.exists) {
+          await userDoc.set({
+            'email': user.email,
+            'name': user.displayName ?? '',
+            'role': 'Walker',
+            'createdAt': FieldValue.serverTimestamp(),
+          });
+        }
+
+        final role = snapshot.data()?['role'] ?? 'walker';
+
+        if (role == 'Walker') {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => const WalkerHome()),
+          );
+        } else if (role == 'Wanderer') {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => const WandererHome()),
+          );
+        }
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Signed in with Google successfully!')),
+        );
+      }
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Google Sign-in failed: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Google Sign-in failed: $e')));
     } finally {
       setState(() => _isLoading = false);
     }
   }
+
 
   @override
   Widget build(BuildContext context) {
