@@ -96,6 +96,8 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
         'interests': _selectedInterests,
         'id': FirebaseAuth.instance.currentUser?.uid,
         'rating': 5,
+        'walks': 0,
+        'earnings': 0,
       };
 
       widget.onSaveAndContinue(profile);

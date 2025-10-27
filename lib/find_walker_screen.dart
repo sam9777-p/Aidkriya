@@ -13,6 +13,7 @@ import 'components/map_view_widget.dart';
 import 'components/view_toggle.dart';
 import 'components/walker_card.dart';
 import 'model/Walker.dart';
+import 'model/schedule_walk_screen.dart';
 import 'model/user_model.dart';
 import 'model/walker_list_early.dart';
 
@@ -25,6 +26,10 @@ class FindWalkerScreen extends StatefulWidget {
 
 class _FindWalkerScreenState extends State<FindWalkerScreen> {
   StreamSubscription? _walkerSub;
+  Map<String, UserModel> _userCache = {};
+  StreamSubscription<DatabaseEvent>? _childAddedSub;
+  StreamSubscription<DatabaseEvent>? _childChangedSub;
+  Timer? _updateDebounceTimer;
   bool _isLoading = true;
   Position? myPos;
   Set<Marker> _markers = {};
@@ -49,6 +54,9 @@ class _FindWalkerScreenState extends State<FindWalkerScreen> {
     locationService.stopTracking();
     _searchController.dispose();
     _walkerSub?.cancel();
+    _childAddedSub?.cancel();
+    _childChangedSub?.cancel();
+    _updateDebounceTimer?.cancel();
     super.dispose();
   }
 
@@ -271,59 +279,96 @@ class _FindWalkerScreenState extends State<FindWalkerScreen> {
     setState(() => _isLoading = true);
 
     myPos = await Geolocator.getCurrentPosition();
+    final ref = FirebaseDatabase.instance.ref('locations');
 
-    _walkerSub = listenToActiveWalkers().listen((activeWalkers) async {
-      if (!mounted) return;
+    // Listen to new walkers being added
+    _childAddedSub = ref.onChildAdded.listen((event) {
+      _handleWalkerUpdate(event);
+    });
 
-      // Filter nearby walkers
-      final nearbyWalkers = await getNearbyWalkers(myPos!, activeWalkers);
+    // Listen to location updates for existing walkers
+    _childChangedSub = ref.onChildChanged.listen((event) {
+      _handleWalkerUpdate(event);
+    });
 
-      // Sort by distance (if not already)
-      nearbyWalkers.sort((a, b) => a.distance!.compareTo(b.distance!));
+    setState(() => _isLoading = false);
+  }
 
-      // Fetch user profiles from Firestore
-      final walkersWithProfiles = await _attachUserData(nearbyWalkers);
+  void _handleWalkerUpdate(DatabaseEvent event) {
+    if (event.snapshot.value == null) return;
 
-      if (!mounted) return;
+    final id = event.snapshot.key!;
+    final value = Map<String, dynamic>.from(event.snapshot.value as Map);
 
-      // Update map markers
-      _updateMarkers(walkersWithProfiles);
+    final walkerEarly = WalkerListEarly.fromMap(id, value);
 
-      // ✅ Hide loader after first successful fetch
-      setState(() => _isLoading = false);
+    // Only handle active walkers
+    if (!walkerEarly.active) return;
+
+    // Throttle updates to prevent rebuilding too often
+    _updateDebounceTimer?.cancel();
+    _updateDebounceTimer = Timer(const Duration(seconds: 1), () async {
+      await _updateWalkerData(walkerEarly);
     });
   }
 
-  Future<List<Walker>> _attachUserData(List<WalkerListEarly> walkers) async {
-    final firestore = FirebaseFirestore.instance;
+  Future<void> _updateWalkerData(WalkerListEarly walkerEarly) async {
+    if (myPos == null) return;
 
-    // Run all Firestore fetches in parallel
-    final futures = walkers.map((w) async {
-      final doc = await FirebaseFirestore.instance
+    final distance =
+        Geolocator.distanceBetween(
+          myPos!.latitude,
+          myPos!.longitude,
+          walkerEarly.latitude,
+          walkerEarly.longitude,
+        ) /
+        1000;
+
+    if (distance > 5) return; // Ignore far away walkers
+
+    // Fetch cached user profile if not already loaded
+    if (!_userCache.containsKey(walkerEarly.id)) {
+      final userDoc = await FirebaseFirestore.instance
           .collection('users')
-          .doc(w.id)
+          .doc(walkerEarly.id)
           .get();
-      debugPrint("Doc exists: ${doc.exists}");
-      debugPrint("Doc data: ${doc.data()}");
 
-      if (!doc.exists) return Future.value(); // skip silently
+      if (userDoc.exists) {
+        _userCache[walkerEarly.id] = UserModel.fromMap(userDoc.data()!);
+      } else {
+        return; // skip invalid
+      }
+    }
 
-      final userModel = UserModel.fromMap(doc.data()!);
-      return Walker(
-        id: w.id,
-        name: userModel.fullName,
-        rating: userModel.rating.toDouble(),
-        distance: w.distance ?? 0.0,
-        imageUrl: userModel.imageUrl,
-        latitude: w.latitude,
-        longitude: w.longitude,
-        age: userModel.age.toDouble(),
-        bio: userModel.bio,
-      );
-    });
+    final userModel = _userCache[walkerEarly.id]!;
 
-    final result = await Future.wait(futures);
-    return result.whereType<Walker>().toList();
+    final updatedWalker = Walker(
+      id: walkerEarly.id,
+      name: userModel.fullName,
+      rating: userModel.rating.toDouble(),
+      distance: distance,
+      imageUrl: userModel.imageUrl,
+      latitude: walkerEarly.latitude,
+      longitude: walkerEarly.longitude,
+      age: userModel.age.toDouble(),
+      bio: userModel.bio,
+    );
+
+    // Merge or update in the local list
+    final index = walkers.indexWhere((w) => w.id == walkerEarly.id);
+    if (index >= 0) {
+      walkers[index] = updatedWalker;
+    } else {
+      walkers.add(updatedWalker);
+    }
+
+    walkers.sort((a, b) => a.distance.compareTo(b.distance));
+
+    if (mounted) {
+      setState(() {
+        _updateMarkers(walkers);
+      });
+    }
   }
 
   Future<List<WalkerListEarly>> getNearbyWalkers(
@@ -386,5 +431,14 @@ class _FindWalkerScreenState extends State<FindWalkerScreen> {
 
   void _onInstantWalkPressed(Walker walker) =>
       print('Instant walk with: ${walker.id}');
-  void _onScheduleWalkPressed() => print('Schedule walk pressed');
+  void _onScheduleWalkPressed() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) {
+          return ScheduleWalkScreen(availableWalkers: walkers);
+        },
+      ),
+    );
+  }
 }

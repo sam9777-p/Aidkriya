@@ -10,6 +10,8 @@ class UserModel {
   final List<String> interests;
   final int rating;
   final String? imageUrl;
+  final int walks;
+  final int earnings;
 
   UserModel({
     this.id,
@@ -21,6 +23,8 @@ class UserModel {
     required this.interests,
     required this.rating,
     required this.imageUrl,
+    required this.walks,
+    required this.earnings,
   });
 
   // ✅ Convert a Map (from Firebase or JSON) to UserProfile
@@ -35,6 +39,8 @@ class UserModel {
       interests: List<String>.from(map['interests'] ?? []),
       rating: (map['rating'] ?? 0).toInt(),
       imageUrl: map['imageUrl'],
+      walks: (map['walks'] ?? 0).toInt(),
+      earnings: (map['earnings'] ?? 0).toInt(),
     );
   }
 
@@ -50,6 +56,8 @@ class UserModel {
       'interests': interests,
       'rating': rating,
       'imageUrl': imageUrl,
+      'walks': walks,
+      'earnings': earnings,
     };
   }
 }

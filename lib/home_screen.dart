@@ -167,13 +167,6 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         const SizedBox(height: 16),
         ActionButton(
-          text: 'Schedule a Walk',
-          color: const Color(0xFFB2F5D9),
-          textColor: Colors.black,
-          onPressed: () => _onScheduleWalkPressed(),
-        ),
-        const SizedBox(height: 16),
-        ActionButton(
           text: 'View History',
           color: Colors.white,
           textColor: Colors.black,
@@ -293,10 +286,6 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       _currentIndex = 1;
     });
-  }
-
-  void _onScheduleWalkPressed() {
-    print('Schedule walk pressed');
   }
 
   void _onViewHistoryPressed() {

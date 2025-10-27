@@ -52,6 +52,8 @@ dependencies:
   # Using maintained fork instead of geoflutterfire
   geoflutterfire_plus: ^0.0.3
 
+  intl: ^0.18.0
+
 
 dev_dependencies:
   flutter_test:
