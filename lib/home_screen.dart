@@ -1,13 +1,17 @@
 import 'package:aidkriya_walker/backend/location_service.dart';
+import 'package:aidkriya_walker/incoming_requests_screen.dart';
 import 'package:aidkriya_walker/profile_screen.dart';
 import 'package:aidkriya_walker/social_impact_card.dart';
 import 'package:aidkriya_walker/stats_card.dart';
 import 'package:aidkriya_walker/walker_of_the_week_card.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import 'action_button.dart';
 import 'challenge_card.dart';
 import 'find_walker_screen.dart';
+import 'model/user_model.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -23,21 +27,81 @@ class _HomeScreenState extends State<HomeScreen> {
   int socialImpact = 250;
 
   final locationService = LocationService();
+  UserModel? _user;
+  bool _isWalker = false;
+  bool _isLoading = true;
 
   @override
   void initState() {
-    locationService.startTracking(context);
     super.initState();
+    _loadUserData();
+  }
+
+  Future<void> _loadUserData() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        setState(() => _isLoading = false);
+        return;
+      }
+
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+
+      if (doc.exists) {
+        final data = doc.data()!;
+        final userModel = UserModel.fromMap(data);
+
+        // Check role
+        final userRole = data['role'];
+        final isWalker =
+            userRole != null &&
+            (userRole.toString().toLowerCase() == 'walker' ||
+                userRole.toString() == 'Walker');
+
+        print('HomeScreen: User role from Firestore: $userRole');
+        print('HomeScreen: Is Walker: $isWalker');
+
+        setState(() {
+          _user = userModel;
+          _isWalker = isWalker;
+        });
+
+        // ✅ Start location tracking if Walker
+        // LocationService now handles role verification internally as well
+        if (_isWalker && mounted) {
+          print('HomeScreen: Starting location tracking for Walker');
+          await locationService.startTracking(context);
+        } else {
+          print('HomeScreen: Not starting tracking - User is not a Walker');
+          // Ensure tracking is stopped for non-walkers
+          await locationService.stopTracking();
+        }
+      }
+    } catch (e) {
+      print('HomeScreen: Error loading user data: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   @override
   void dispose() {
+    // Always stop tracking when screen is disposed
     locationService.stopTracking();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
     return Scaffold(
       backgroundColor: const Color(0xFFF5F5F5),
       body: SafeArea(child: _getCurrentScreen()),
@@ -48,15 +112,17 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _getCurrentScreen() {
     switch (_currentIndex) {
       case 0:
-        return _buildHomeContent(); // your existing home UI
+        return _buildHomeContent();
       case 1:
-        return const FindWalkerScreen(); // new screen for finding walkers
+        return _isWalker
+            ? const IncomingRequestsScreen()
+            : const FindWalkerScreen();
       case 2:
         return const Center(
           child: Text('Community coming soon!', style: TextStyle(fontSize: 24)),
         );
       case 3:
-        return const ProfileScreen(); // your profile screen
+        return const ProfileScreen();
       default:
         return const Center(child: Text('Unknown tab'));
     }
@@ -97,11 +163,16 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
         GestureDetector(
-          onTap: () => _navigateToProfile(),
+          onTap: _navigateToProfile,
           child: CircleAvatar(
             radius: 20,
             backgroundColor: Colors.grey[300],
-            child: Icon(Icons.person, color: Colors.grey[600]),
+            backgroundImage: _user?.imageUrl != null
+                ? NetworkImage(_user!.imageUrl!)
+                : null,
+            child: _user?.imageUrl == null
+                ? Icon(Icons.person, color: Colors.grey[600])
+                : null,
           ),
         ),
       ],
@@ -111,15 +182,15 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildGreeting() {
     return Row(
       children: [
-        const Text(
-          'Good morning, Alex ',
-          style: TextStyle(
+        Text(
+          'Good morning, ${_user?.fullName.split(' ').first ?? 'User'} ',
+          style: const TextStyle(
             fontSize: 32,
             fontWeight: FontWeight.bold,
             color: Colors.black,
           ),
         ),
-        Text('👋', style: TextStyle(fontSize: 32)),
+        const Text('👋', style: TextStyle(fontSize: 32)),
       ],
     );
   }
@@ -130,10 +201,7 @@ class _HomeScreenState extends State<HomeScreen> {
         Expanded(
           child: StatsCard(
             title: 'Steps Today',
-            value: stepsToday.toString().replaceAllMapped(
-              RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-              (Match m) => '${m[1]},',
-            ),
+            value: stepsToday.toString(),
             onTap: () => _onStatsCardTap('Steps'),
           ),
         ),
@@ -150,20 +218,19 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildSocialImpactCard() {
-    return SocialImpactCard(
-      amount: socialImpact,
-      onTap: () => _onSocialImpactTap(),
-    );
+    return SocialImpactCard(amount: socialImpact, onTap: _onSocialImpactTap);
   }
 
   Widget _buildActionButtons() {
     return Column(
       children: [
         ActionButton(
-          text: 'Find a Walker',
+          text: _isWalker ? 'Incoming Requests' : 'Find a Walker',
           color: const Color(0xFF00E676),
           textColor: Colors.black,
-          onPressed: () => _onFindWalkerPressed(),
+          onPressed: _isWalker
+              ? _onIncomingRequestPressed
+              : _onFindWalkerPressed,
         ),
         const SizedBox(height: 16),
         ActionButton(
@@ -171,7 +238,7 @@ class _HomeScreenState extends State<HomeScreen> {
           color: Colors.white,
           textColor: Colors.black,
           borderColor: Colors.grey[300],
-          onPressed: () => _onViewHistoryPressed(),
+          onPressed: _onViewHistoryPressed,
         ),
       ],
     );
@@ -198,13 +265,13 @@ class _HomeScreenState extends State<HomeScreen> {
                 name: 'Sarah L.',
                 steps: '25,000 steps',
                 imageUrl: null,
-                onTap: () => _onWalkerOfWeekTap(),
+                onTap: _onWalkerOfWeekTap,
               ),
               const SizedBox(width: 16),
               ChallengeCard(
                 title: 'Weekend Walk',
                 description: 'Walk 15km this weekend to earn a badge!',
-                onTap: () => _onChallengeTap(),
+                onTap: _onChallengeTap,
               ),
             ],
           ),
@@ -232,10 +299,8 @@ class _HomeScreenState extends State<HomeScreen> {
         backgroundColor: Colors.white,
         selectedItemColor: const Color(0xFF00E676),
         unselectedItemColor: Colors.grey[600],
-        selectedLabelStyle: const TextStyle(fontWeight: FontWeight.w600),
-        unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w500),
-        items: const [
-          BottomNavigationBarItem(
+        items: [
+          const BottomNavigationBarItem(
             icon: Icon(Icons.home_outlined),
             activeIcon: Icon(Icons.home),
             label: 'Home',
@@ -243,14 +308,14 @@ class _HomeScreenState extends State<HomeScreen> {
           BottomNavigationBarItem(
             icon: Icon(Icons.directions_walk_outlined),
             activeIcon: Icon(Icons.directions_walk),
-            label: 'Walks',
+            label: _isWalker ? 'Requests' : 'Walks',
           ),
-          BottomNavigationBarItem(
+          const BottomNavigationBarItem(
             icon: Icon(Icons.people_outline),
             activeIcon: Icon(Icons.people),
             label: 'Community',
           ),
-          BottomNavigationBarItem(
+          const BottomNavigationBarItem(
             icon: Icon(Icons.person_outline),
             activeIcon: Icon(Icons.person),
             label: 'Profile',
@@ -260,16 +325,8 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildPlaceholder() {
-    return Center(
-      child: Text(
-        'Tab ${_currentIndex + 1} Content',
-        style: const TextStyle(fontSize: 24),
-      ),
-    );
-  }
+  // --- CALLBACKS ---
 
-  // Callback methods - Add your functionality here
   void _navigateToProfile() {
     print('Navigate to profile');
   }
@@ -283,6 +340,12 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _onFindWalkerPressed() {
+    setState(() {
+      _currentIndex = 1;
+    });
+  }
+
+  void _onIncomingRequestPressed() {
     setState(() {
       _currentIndex = 1;
     });

@@ -12,6 +12,7 @@ class UserModel {
   final String? imageUrl;
   final int walks;
   final int earnings;
+  String? activeWalkId;
 
   UserModel({
     this.id,
@@ -25,6 +26,7 @@ class UserModel {
     required this.imageUrl,
     required this.walks,
     required this.earnings,
+    this.activeWalkId,
   });
 
   // ✅ Convert a Map (from Firebase or JSON) to UserProfile
@@ -41,6 +43,7 @@ class UserModel {
       imageUrl: map['imageUrl'],
       walks: (map['walks'] ?? 0).toInt(),
       earnings: (map['earnings'] ?? 0).toInt(),
+      activeWalkId: map['activeWalkId'],
     );
   }
 
@@ -58,6 +61,7 @@ class UserModel {
       'imageUrl': imageUrl,
       'walks': walks,
       'earnings': earnings,
+      'activeWalkId': activeWalkId,
     };
   }
 }

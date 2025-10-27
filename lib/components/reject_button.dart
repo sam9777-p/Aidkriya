@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 class RejectButton extends StatelessWidget {
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
 
   const RejectButton({super.key, required this.onPressed});
 

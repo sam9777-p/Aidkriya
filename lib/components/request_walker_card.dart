@@ -1,15 +1,10 @@
-import 'package:aidkriya_walker/model/incoming_request.dart';
+import 'package:aidkriya_walker/model/incoming_request_display.dart';
 import 'package:flutter/material.dart';
 
 class RequestWalkerCard extends StatelessWidget {
-  final IncomingRequest walker;
-  final VoidCallback onMessageTapped;
+  final IncomingRequestDisplay walker;
 
-  const RequestWalkerCard({
-    Key? key,
-    required this.walker,
-    required this.onMessageTapped,
-  }) : super(key: key);
+  const RequestWalkerCard({Key? key, required this.walker}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -31,10 +26,10 @@ class RequestWalkerCard extends StatelessWidget {
           CircleAvatar(
             radius: 30,
             backgroundColor: Colors.grey[300],
-            backgroundImage: walker.imageUrl != null
-                ? NetworkImage(walker.imageUrl!)
+            backgroundImage: walker.senderImageUrl != null
+                ? NetworkImage(walker.senderImageUrl!)
                 : null,
-            child: walker.imageUrl == null
+            child: walker.senderImageUrl == null
                 ? Icon(Icons.person, color: Colors.grey[600], size: 32)
                 : null,
           ),
@@ -44,7 +39,7 @@ class RequestWalkerCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  walker.name,
+                  walker.senderName,
                   style: const TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
@@ -53,26 +48,10 @@ class RequestWalkerCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  walker.bio,
+                  walker.senderBio ?? 'nice',
                   style: TextStyle(fontSize: 14, color: Colors.grey[600]),
                 ),
               ],
-            ),
-          ),
-          GestureDetector(
-            onTap: onMessageTapped,
-            child: Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: const Color(0xFFE8F5F0),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Icon(
-                Icons.chat_bubble_outline,
-                color: Color(0xFF6BCBA6),
-                size: 24,
-              ),
             ),
           ),
         ],

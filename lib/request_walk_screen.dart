@@ -1,16 +1,17 @@
-import 'package:aidkriya_walker/backend/walk_request_service.dart';
-import 'package:aidkriya_walker/model/walk_request.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart'; // Import Firebase Auth
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:intl/intl.dart';
 
+import 'backend/walk_request_service.dart';
 import 'components/duration_minute_picker.dart';
 import 'components/walk_detail_item.dart';
 import 'components/walker_profile_card.dart';
-import 'model/Walker.dart';
+import 'model/Walker.dart'; // For date/time formatting if needed
 
 class RequestWalkScreen extends StatefulWidget {
-  final Walker walker;
+  final Walker walker; // Walker being requested
 
   const RequestWalkScreen({Key? key, required this.walker}) : super(key: key);
 
@@ -19,69 +20,127 @@ class RequestWalkScreen extends StatefulWidget {
 }
 
 class _RequestWalkScreenState extends State<RequestWalkScreen> {
-  int _currentIndex = 1;
+  // Use the new service
+  final WalkRequestService _walkRequestService = WalkRequestService();
+  final String? _currentUserId =
+      FirebaseAuth.instance.currentUser?.uid; // Get current user ID
+
   String _currentTime = '';
   String _currentDate = '';
   Position? _currentPosition;
   bool _isSending = false;
-  final userId = FirebaseAuth.instance.currentUser?.uid ?? 'guest';
 
   // Walk details data
-  String selectedDate = 'May 20, 2024';
-  String selectedTime = '3:00 PM';
+  DateTime _selectedDateTime =
+      DateTime.now(); // Store as DateTime for easier use
   String selectedDuration = 'Select duration';
-  String selectedPace = 'Leisurely';
+  int? _selectedDurationMinutes; // Store the raw minutes
   String selectedLocation = 'Your Location';
-
-  final List<String> months = [
-    'Jan',
-    'Feb',
-    'Mar',
-    'Apr',
-    'May',
-    'Jun',
-    'Jul',
-    'Aug',
-    'Sep',
-    'Oct',
-    'Nov',
-    'Dec',
-  ];
+  // String selectedPace = 'Leisurely'; // Not used in current send logic, keep if needed elsewhere
 
   @override
   void initState() {
-    _setCurrentDateTime();
-    _getCurrentLocation();
     super.initState();
+    _updateDisplayedDateTime();
+    _getCurrentLocation();
+    // Initialize date/time more robustly if needed (e.g., from a calendar selection)
   }
 
   void _getCurrentLocation() async {
-    // Get the current position
-    Position position = await Geolocator.getCurrentPosition(
-      desiredAccuracy: LocationAccuracy.high,
-    );
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        _showErrorSnackBar('Location services are disabled.');
+        return;
+      }
 
-    setState(() {
-      _currentPosition = position;
-    });
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          _showErrorSnackBar('Location permissions are denied.');
+          return;
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        _showErrorSnackBar(
+          'Location permissions are permanently denied, we cannot request permissions.',
+        );
+        return;
+      }
+
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+      setState(() {
+        _currentPosition = position;
+        selectedLocation = "Current Location"; // Update display text
+        debugPrint(
+          "[RequestWalkScreen] Current Location obtained: ${position.latitude}, ${position.longitude}",
+        );
+      });
+    } catch (e) {
+      debugPrint("[RequestWalkScreen] Error getting location: $e");
+      _showErrorSnackBar('Could not get current location.');
+      setState(() {
+        selectedLocation = "Location Unknown";
+      });
+    }
   }
 
-  void _setCurrentDateTime() {
-    DateTime now = DateTime.now();
-
-    // Format date like "May 20, 2024"
-    String month = months[now.month - 1];
-    _currentDate = "$month ${now.day}, ${now.year}";
-
-    // Format time like "3:00 PM"
-    int hour = now.hour;
-    String period = hour >= 12 ? "PM" : "AM";
-    hour = hour % 12;
-    if (hour == 0) hour = 12;
-    String minute = now.minute.toString().padLeft(2, '0');
-    _currentTime = "$hour:$minute $period";
-
+  void _updateDisplayedDateTime() {
+    // Format date like "October 27, 2025"
+    _currentDate = DateFormat('MMMM d, yyyy').format(_selectedDateTime);
+    // Format time like "11:10 PM"
+    _currentTime = DateFormat('h:mm a').format(_selectedDateTime);
     setState(() {});
+  }
+
+  // --- Date Picker (Example) ---
+  Future<void> _selectDate(BuildContext context) async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDateTime,
+      firstDate: DateTime.now(), // Allow selection from today onwards
+      lastDate: DateTime.now().add(
+        const Duration(days: 30),
+      ), // Allow up to 30 days in advance
+    );
+    if (picked != null && picked != _selectedDateTime) {
+      setState(() {
+        // Keep the time, change the date
+        _selectedDateTime = DateTime(
+          picked.year,
+          picked.month,
+          picked.day,
+          _selectedDateTime.hour,
+          _selectedDateTime.minute,
+        );
+        _updateDisplayedDateTime();
+      });
+    }
+  }
+
+  // --- Time Picker (Example) ---
+  Future<void> _selectTime(BuildContext context) async {
+    final TimeOfDay? picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(_selectedDateTime),
+    );
+    if (picked != null) {
+      setState(() {
+        // Keep the date, change the time
+        _selectedDateTime = DateTime(
+          _selectedDateTime.year,
+          _selectedDateTime.month,
+          _selectedDateTime.day,
+          picked.hour,
+          picked.minute,
+        );
+        _updateDisplayedDateTime();
+      });
+    }
   }
 
   @override
@@ -121,7 +180,7 @@ class _RequestWalkScreenState extends State<RequestWalkScreen> {
           fontWeight: FontWeight.bold,
         ),
       ),
-      centerTitle: false,
+      centerTitle: false, // Align title to the start
     );
   }
 
@@ -136,18 +195,13 @@ class _RequestWalkScreenState extends State<RequestWalkScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Text(
-              'Walk Details',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: Colors.black,
-              ),
-            ),
-          ],
+        const Text(
+          'Walk Details',
+          style: TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+            color: Colors.black,
+          ),
         ),
         const SizedBox(height: 16),
         Container(
@@ -169,14 +223,14 @@ class _RequestWalkScreenState extends State<RequestWalkScreen> {
                 icon: Icons.calendar_today,
                 label: 'Date',
                 value: _currentDate,
-                onTap: () => _onDateTapped(),
+                onTap: () => _selectDate(context), // Use Date Picker
               ),
               const Divider(height: 32),
               WalkDetailItem(
                 icon: Icons.access_time,
                 label: 'Time',
                 value: _currentTime,
-                onTap: () => _onTimeTapped(),
+                onTap: () => _selectTime(context), // Use Time Picker
               ),
               const Divider(height: 32),
               WalkDetailItem(
@@ -192,6 +246,17 @@ class _RequestWalkScreenState extends State<RequestWalkScreen> {
                 value: selectedLocation,
                 onTap: () => _onLocationTapped(),
               ),
+              const Divider(height: 32),
+              // Add Notes Field (Optional)
+              TextField(
+                decoration: InputDecoration(
+                  icon: Icon(Icons.note_add_outlined, color: Colors.grey[600]),
+                  hintText: 'Add optional notes for the walker...',
+                  border: InputBorder.none,
+                ),
+                maxLines: 2,
+                // controller: _notesController, // Add a TextEditingController if needed
+              ),
             ],
           ),
         ),
@@ -204,12 +269,16 @@ class _RequestWalkScreenState extends State<RequestWalkScreen> {
       width: double.infinity,
       height: 56,
       child: ElevatedButton(
-        onPressed: _isSending
+        onPressed:
+            _isSending ||
+                _currentUserId ==
+                    null // Disable if sending or not logged in
             ? null
-            : _onSendRequestPressed, // disable while sending
+            : _onSendRequestPressed,
         style: ElevatedButton.styleFrom(
           backgroundColor: const Color(0xFF6BCBA6),
           foregroundColor: Colors.white,
+          disabledBackgroundColor: Colors.grey[400], // Indicate disabled state
           elevation: 0,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(28),
@@ -232,25 +301,11 @@ class _RequestWalkScreenState extends State<RequestWalkScreen> {
     );
   }
 
-  // Callback methods
+  // --- UI Action Callbacks ---
+
   void _onProfileTapped() {
-    print('Profile tapped: ${widget.walker.name}');
-    // Navigate to walker profile
-  }
-
-  void _onEditPressed() {
-    print('Edit walk details');
-    // Open edit mode or dialog
-  }
-
-  void _onDateTapped() {
-    print('Select date');
-    // Show date picker
-  }
-
-  void _onTimeTapped() {
-    print('Select time');
-    // Show time picker
+    debugPrint('[RequestWalkScreen] Profile tapped: ${widget.walker.name}');
+    // Navigate to walker profile if needed
   }
 
   void _onDurationTapped() async {
@@ -265,82 +320,130 @@ class _RequestWalkScreenState extends State<RequestWalkScreen> {
 
     if (result != null) {
       setState(() {
-        selectedDuration = '$result minutes';
+        _selectedDurationMinutes = result;
+        selectedDuration = '$result min'; // Update display string
+        debugPrint("[RequestWalkScreen] Duration selected: $result minutes");
       });
     }
   }
 
   void _onLocationTapped() {
-    print('Select location');
-    // Show location picker
+    debugPrint(
+      '[RequestWalkScreen] Location tapped. Current: ${_currentPosition?.latitude}, ${_currentPosition?.longitude}',
+    );
+    // Show location picker or map view if needed
+    // For now, it just uses the current location determined in initState
+    if (_currentPosition == null) {
+      _showErrorSnackBar("Still trying to get your location...");
+      _getCurrentLocation(); // Attempt to get it again
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Meeting point set to your current location."),
+          duration: Duration(seconds: 1),
+        ),
+      );
+    }
   }
 
+  // --- Send Request Logic ---
+
   void _onSendRequestPressed() async {
-    if (selectedDuration == 'Select duration') {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please select a duration for the walk.'),
-          backgroundColor: Colors.redAccent,
-          duration: Duration(seconds: 2),
-        ),
-      );
+    debugPrint("[RequestWalkScreen] Send Request button pressed.");
+    // --- Validation ---
+    if (_currentUserId == null) {
+      _showErrorSnackBar("You must be logged in to send a request.");
+      debugPrint("[RequestWalkScreen] Aborted: User not logged in.");
       return;
     }
-
+    if (_selectedDurationMinutes == null ||
+        selectedDuration == 'Select duration') {
+      _showErrorSnackBar('Please select a duration for the walk.');
+      debugPrint("[RequestWalkScreen] Aborted: Duration not selected.");
+      return;
+    }
     if (_currentPosition == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Unable to get your location. Please try again.'),
-          backgroundColor: Colors.redAccent,
-          duration: Duration(seconds: 2),
-        ),
+      _showErrorSnackBar(
+        'Could not get your location. Please check permissions and try again.',
       );
+      debugPrint("[RequestWalkScreen] Aborted: Current position is null.");
+      _getCurrentLocation(); // Try getting location again
       return;
     }
 
-    setState(() {
-      _isSending = true; // start loading
-    });
+    setState(() => _isSending = true); // Start loading indicator
 
-    final req_service = WalkRequestService();
-    final req_data = WalkRequest(
-      id: userId,
-      longitude: _currentPosition!.longitude,
-      latitude: _currentPosition!.latitude,
-      date: _currentDate,
-      time: _currentTime,
-      duration: selectedDuration,
-      status: 'Pending',
-      walker: widget.walker,
-      notes: null,
-    );
+    // --- Prepare Request Data ---
+    // You might want to fetch the SENDER's current profile info here too
+    // for denormalization if you added senderInfo to the service.
 
+    final requestMap = {
+      'senderId': _currentUserId!,
+      'recipientId': widget.walker.id, // The ID of the walker profile shown
+      'walkerProfile': widget.walker
+          .toMap(), // Include selected walker's details
+      'date': _currentDate, // Use the formatted date string
+      'time': _currentTime, // Use the formatted time string
+      'duration': selectedDuration, // e.g., "45 min"
+      'latitude': _currentPosition!.latitude,
+      'longitude': _currentPosition!.longitude,
+      'status':
+          'Pending', // Initial status set by service, but good practice here too
+      'notes': null, // Get from _notesController if you add one
+      'createdAt': FieldValue.serverTimestamp(), // Set by service
+      'updatedAt': FieldValue.serverTimestamp(), // Set by service
+      // Add 'senderInfo' map here if you fetched sender's name/image
+    };
+
+    debugPrint("[RequestWalkScreen] Prepared request data: $requestMap");
+
+    // --- Call Service ---
     try {
-      await req_service.sendRequest(req_data, userId, widget.walker.id);
+      final String? walkId = await _walkRequestService.sendRequest(requestMap);
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Walk request sent successfully!'),
-          backgroundColor: Colors.green,
-          duration: Duration(seconds: 2),
-        ),
-      );
-
-      setState(() {
-        selectedDuration = 'Select duration'; // reset duration
-      });
+      if (walkId != null) {
+        debugPrint(
+          "[RequestWalkScreen] Request sent successfully. Walk ID: $walkId",
+        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Walk request sent successfully!'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 3),
+            ),
+          );
+          // Optionally navigate back or reset the form
+          Navigator.pop(context); // Go back after successful request
+          // setState(() {
+          //   selectedDuration = 'Select duration'; // Reset duration
+          //   _selectedDurationMinutes = null;
+          // });
+        }
+      } else {
+        throw Exception("Service returned null ID."); // Handle null ID case
+      }
     } catch (error) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to send request: $error'),
-          backgroundColor: Colors.redAccent,
-          duration: const Duration(seconds: 2),
-        ),
-      );
+      debugPrint("[RequestWalkScreen] Failed to send request: $error");
+      if (mounted) {
+        _showErrorSnackBar('Failed to send request: $error');
+      }
     } finally {
-      setState(() {
-        _isSending = false; // stop loading
-      });
+      if (mounted) {
+        setState(() => _isSending = false); // Stop loading indicator
+      }
     }
+  }
+
+  // --- Helper for SnackBar ---
+  void _showErrorSnackBar(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.redAccent,
+        duration: const Duration(seconds: 3),
+      ),
+    );
   }
 }

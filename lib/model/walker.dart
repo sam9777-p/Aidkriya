@@ -2,7 +2,7 @@ class Walker {
   final String id;
   final String? name;
   final double? rating;
-  final double distance;
+  final int distance;
   final String? imageUrl;
   final double latitude;
   final double longitude;
@@ -42,7 +42,7 @@ class Walker {
       id: map['id'] ?? '',
       name: map['name'],
       rating: (map['rating'] as num?)?.toDouble(),
-      distance: (map['distance'] as num?)?.toDouble() ?? 0.0,
+      distance: (map['distance'] as num?)?.toInt() ?? 0,
       imageUrl: map['imageUrl'],
       latitude: (map['latitude'] as num?)?.toDouble() ?? 0.0,
       longitude: (map['longitude'] as num?)?.toDouble() ?? 0.0,

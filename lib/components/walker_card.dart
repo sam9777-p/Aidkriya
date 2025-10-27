@@ -1,23 +1,16 @@
 import 'package:aidkriya_walker/components/request_button.dart';
 import 'package:aidkriya_walker/components/walker_avatar.dart';
 import 'package:aidkriya_walker/model/Walker.dart';
-import 'package:aidkriya_walker/model/walker_list_early.dart';
 import 'package:flutter/material.dart';
-
-import 'instant_walk_button.dart';
 
 class WalkerCard extends StatelessWidget {
   final Walker walker;
-  final bool showInstantWalk;
   final VoidCallback onRequestPressed;
-  final VoidCallback? onInstantWalkPressed;
 
   const WalkerCard({
     super.key,
     required this.walker,
-    this.showInstantWalk = false,
     required this.onRequestPressed,
-    this.onInstantWalkPressed,
   });
 
   @override
@@ -78,14 +71,7 @@ class WalkerCard extends StatelessWidget {
               ],
             ),
           ),
-          Column(
-            children: [
-              if (!showInstantWalk)
-                RequestButton(onPressed: onRequestPressed)
-              else
-                InstantWalkButton(onPressed: onInstantWalkPressed!),
-            ],
-          ),
+          Column(children: [RequestButton(onPressed: onRequestPressed)]),
         ],
       ),
     );

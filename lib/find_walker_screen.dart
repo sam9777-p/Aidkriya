@@ -8,7 +8,6 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
-import 'backend/location_service.dart';
 import 'components/map_view_widget.dart';
 import 'components/view_toggle.dart';
 import 'components/walker_card.dart';
@@ -40,18 +39,98 @@ class _FindWalkerScreenState extends State<FindWalkerScreen> {
   final DraggableScrollableController _sheetController =
       DraggableScrollableController();
 
-  final locationService = LocationService();
-
   @override
   void initState() {
-    locationService.startTracking(context);
-    _startListeningToWalkers();
     super.initState();
+    _initializeScreen();
+  }
+
+  // ✅ Fixed initialization - get location first, then listen
+  Future<void> _initializeScreen() async {
+    try {
+      developer.log('FindWalkerScreen: Initializing...', name: 'FindWalker');
+
+      // Check location permission
+      bool hasPermission = await _checkLocationPermission();
+      if (!hasPermission) {
+        developer.log(
+          'FindWalkerScreen: No location permission',
+          name: 'FindWalker',
+        );
+        setState(() => _isLoading = false);
+        return;
+      }
+
+      // Get current position (one-time, no tracking needed)
+      developer.log(
+        'FindWalkerScreen: Getting current position...',
+        name: 'FindWalker',
+      );
+      myPos = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+      developer.log(
+        'FindWalkerScreen: Got position: ${myPos?.latitude}, ${myPos?.longitude}',
+        name: 'FindWalker',
+      );
+
+      // Now start listening to walkers
+      _startListeningToWalkers();
+    } catch (e) {
+      developer.log(
+        'FindWalkerScreen: Error initializing: $e',
+        name: 'FindWalker',
+      );
+      setState(() => _isLoading = false);
+
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error getting location: $e')));
+      }
+    }
+  }
+
+  Future<bool> _checkLocationPermission() async {
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please enable location services')),
+        );
+      }
+      return false;
+    }
+
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Location permission is required')),
+          );
+        }
+        return false;
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Location permission permanently denied'),
+          ),
+        );
+      }
+      return false;
+    }
+
+    return true;
   }
 
   @override
   void dispose() {
-    locationService.stopTracking();
     _searchController.dispose();
     _walkerSub?.cancel();
     _childAddedSub?.cancel();
@@ -67,6 +146,8 @@ class _FindWalkerScreenState extends State<FindWalkerScreen> {
       appBar: _buildAppBar(),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
+          : myPos == null
+          ? _buildLocationError()
           : Column(
               children: [
                 _buildViewToggle(),
@@ -78,17 +159,42 @@ class _FindWalkerScreenState extends State<FindWalkerScreen> {
     );
   }
 
-  Widget _buildMapScreen() {
-    final screenHeight = MediaQuery.of(context).size.height;
+  Widget _buildLocationError() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.location_off, size: 64, color: Colors.grey),
+          const SizedBox(height: 16),
+          const Text(
+            'Unable to get your location',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Please enable location services',
+            style: TextStyle(color: Colors.grey),
+          ),
+          const SizedBox(height: 24),
+          ElevatedButton(
+            onPressed: () {
+              setState(() => _isLoading = true);
+              _initializeScreen();
+            },
+            child: const Text('Retry'),
+          ),
+        ],
+      ),
+    );
+  }
 
+  Widget _buildMapScreen() {
     return Column(
       children: [
-        // ✅ Map with vertical margins
-        // ✅ Smaller map with more space around it
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 18.0),
           child: SizedBox(
-            height: MediaQuery.of(context).size.height * 0.33, // reduced height
+            height: MediaQuery.of(context).size.height * 0.33,
             child: ClipRRect(
               borderRadius: BorderRadius.circular(18),
               child: MapViewWidget(
@@ -98,8 +204,6 @@ class _FindWalkerScreenState extends State<FindWalkerScreen> {
             ),
           ),
         ),
-
-        // ✅ Draggable Bottom Sheet (not overlaying map)
         Expanded(
           child: DraggableScrollableSheet(
             controller: _sheetController,
@@ -134,23 +238,23 @@ class _FindWalkerScreenState extends State<FindWalkerScreen> {
                       ),
                     ),
                     const SizedBox(height: 8),
-
                     Expanded(
-                      child: ListView.builder(
-                        controller: scrollController,
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        itemCount: walkers.length,
-                        itemBuilder: (context, index) {
-                          return WalkerCard(
-                            walker: walkers[index],
-                            showInstantWalk: index == 1,
-                            onRequestPressed: () =>
-                                _onRequestPressed(walkers[index]),
-                            onInstantWalkPressed: () =>
-                                _onInstantWalkPressed(walkers[index]),
-                          );
-                        },
-                      ),
+                      child: walkers.isEmpty
+                          ? _buildNoWalkersFound()
+                          : ListView.builder(
+                              controller: scrollController,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                              ),
+                              itemCount: walkers.length,
+                              itemBuilder: (context, index) {
+                                return WalkerCard(
+                                  walker: walkers[index],
+                                  onRequestPressed: () =>
+                                      _onRequestPressed(walkers[index]),
+                                );
+                              },
+                            ),
                     ),
                   ],
                 ),
@@ -162,27 +266,54 @@ class _FindWalkerScreenState extends State<FindWalkerScreen> {
     );
   }
 
-  // ✅ List-only view
   Widget _buildListViewOnly() {
     return Column(
       children: [
         Expanded(
-          child: ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: walkers.length,
-            itemBuilder: (context, index) {
-              return WalkerCard(
-                walker: walkers[index],
-                showInstantWalk: index == 1,
-                onRequestPressed: () => _onRequestPressed(walkers[index]),
-                onInstantWalkPressed: () =>
-                    _onInstantWalkPressed(walkers[index]),
-              );
-            },
-          ),
+          child: walkers.isEmpty
+              ? _buildNoWalkersFound()
+              : ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: walkers.length,
+                  itemBuilder: (context, index) {
+                    return WalkerCard(
+                      walker: walkers[index],
+                      onRequestPressed: () => _onRequestPressed(walkers[index]),
+                    );
+                  },
+                ),
         ),
         _buildScheduleWalkButton(),
       ],
+    );
+  }
+
+  Widget _buildNoWalkersFound() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.directions_walk_outlined,
+            size: 64,
+            color: Colors.grey[400],
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'No walkers nearby',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+              color: Colors.grey[700],
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Try again later or schedule a walk',
+            style: TextStyle(color: Colors.grey[500]),
+          ),
+        ],
+      ),
     );
   }
 
@@ -239,46 +370,21 @@ class _FindWalkerScreenState extends State<FindWalkerScreen> {
     );
   }
 
-  Stream<List<WalkerListEarly>> listenToActiveWalkers() async* {
-    final ref = FirebaseDatabase.instance.ref('locations');
+  void _startListeningToWalkers() {
+    developer.log(
+      'FindWalkerScreen: Starting to listen to walkers',
+      name: 'FindWalker',
+    );
 
-    await for (final event in ref.onValue) {
-      final data = event.snapshot.value as Map?;
-      developer.log("Raw snapshot: $data", name: "FirebaseListener");
-
-      if (data == null) {
-        developer.log("No data found.", name: "FirebaseListener");
-        yield [];
-        continue;
-      }
-
-      List<WalkerListEarly> activeWalkers = [];
-
-      data.forEach((key, value) {
-        developer.log("Walker node $key: $value", name: "FirebaseListener");
-
-        final walker = WalkerListEarly.fromMap(
-          key,
-          Map<String, dynamic>.from(value),
-        );
-
-        if (walker.active) {
-          activeWalkers.add(walker);
-        }
-      });
-
+    if (myPos == null) {
       developer.log(
-        "Active walkers: ${activeWalkers.length}",
-        name: "FirebaseListener",
+        'FindWalkerScreen: Cannot listen - no position',
+        name: 'FindWalker',
       );
-      yield activeWalkers;
+      setState(() => _isLoading = false);
+      return;
     }
-  }
 
-  void _startListeningToWalkers() async {
-    setState(() => _isLoading = true);
-
-    myPos = await Geolocator.getCurrentPosition();
     final ref = FirebaseDatabase.instance.ref('locations');
 
     // Listen to new walkers being added
@@ -292,6 +398,7 @@ class _FindWalkerScreenState extends State<FindWalkerScreen> {
     });
 
     setState(() => _isLoading = false);
+    developer.log('FindWalkerScreen: Started listening', name: 'FindWalker');
   }
 
   void _handleWalkerUpdate(DatabaseEvent event) {
@@ -301,19 +408,35 @@ class _FindWalkerScreenState extends State<FindWalkerScreen> {
     final value = Map<String, dynamic>.from(event.snapshot.value as Map);
 
     final walkerEarly = WalkerListEarly.fromMap(id, value);
+    developer.log(
+      'FindWalkerScreen: Received update for walker $id',
+      name: 'FindWalker',
+    );
 
     // Only handle active walkers
-    if (!walkerEarly.active) return;
+    if (!walkerEarly.active) {
+      developer.log(
+        'FindWalkerScreen: Walker $id is not active',
+        name: 'FindWalker',
+      );
+      return;
+    }
 
     // Throttle updates to prevent rebuilding too often
     _updateDebounceTimer?.cancel();
-    _updateDebounceTimer = Timer(const Duration(seconds: 1), () async {
+    _updateDebounceTimer = Timer(const Duration(milliseconds: 500), () async {
       await _updateWalkerData(walkerEarly);
     });
   }
 
   Future<void> _updateWalkerData(WalkerListEarly walkerEarly) async {
-    if (myPos == null) return;
+    if (myPos == null) {
+      developer.log(
+        'My position is null. Skipping update.',
+        name: 'WalkerFilter',
+      );
+      return;
+    }
 
     final distance =
         Geolocator.distanceBetween(
@@ -324,10 +447,27 @@ class _FindWalkerScreenState extends State<FindWalkerScreen> {
         ) /
         1000;
 
-    if (distance > 5) return; // Ignore far away walkers
+    developer.log(
+      'Processing ${walkerEarly.id}. Distance: ${distance.toStringAsFixed(2)} km.',
+      name: 'WalkerFilter',
+    );
+
+    // // Filter walkers by distance
+    // if (distance > 5) {
+    //   developer.log(
+    //     'Walker ${walkerEarly.id} is too far (${distance.toStringAsFixed(2)} km)',
+    //     name: 'WalkerFilter',
+    //   );
+    //   return;
+    // }
 
     // Fetch cached user profile if not already loaded
     if (!_userCache.containsKey(walkerEarly.id)) {
+      developer.log(
+        'Cache miss for ${walkerEarly.id}. Fetching from Firestore...',
+        name: 'WalkerFilter',
+      );
+
       final userDoc = await FirebaseFirestore.instance
           .collection('users')
           .doc(walkerEarly.id)
@@ -335,8 +475,16 @@ class _FindWalkerScreenState extends State<FindWalkerScreen> {
 
       if (userDoc.exists) {
         _userCache[walkerEarly.id] = UserModel.fromMap(userDoc.data()!);
+        developer.log(
+          'Successfully cached ${walkerEarly.id}',
+          name: 'WalkerFilter',
+        );
       } else {
-        return; // skip invalid
+        developer.log(
+          'Walker ${walkerEarly.id} not found in Firestore. Skipping.',
+          name: 'WalkerFilter',
+        );
+        return;
       }
     }
 
@@ -346,7 +494,7 @@ class _FindWalkerScreenState extends State<FindWalkerScreen> {
       id: walkerEarly.id,
       name: userModel.fullName,
       rating: userModel.rating.toDouble(),
-      distance: distance,
+      distance: distance.toInt(),
       imageUrl: userModel.imageUrl,
       latitude: walkerEarly.latitude,
       longitude: walkerEarly.longitude,
@@ -371,55 +519,27 @@ class _FindWalkerScreenState extends State<FindWalkerScreen> {
     }
   }
 
-  Future<List<WalkerListEarly>> getNearbyWalkers(
-    Position myPos,
-    List<WalkerListEarly> allWalkers,
-  ) async {
-    const double maxDistanceKm = 5;
-
-    List<WalkerListEarly> nearby = [];
-
-    for (var walker in allWalkers) {
-      double distance =
-          Geolocator.distanceBetween(
-            myPos.latitude,
-            myPos.longitude,
-            walker.latitude,
-            walker.longitude,
-          ) /
-          1000;
-
-      if (distance <= maxDistanceKm) {
-        walker.distance = distance; // attach distance
-        nearby.add(walker);
-      }
-    }
-
-    nearby.sort((a, b) => a.distance!.compareTo(b.distance!));
-
-    return nearby;
-  }
-
   void _updateMarkers(List<Walker> nearbyWalkers) {
     final newMarkers = <Marker>{};
     for (var walker in nearbyWalkers) {
       newMarkers.add(
         Marker(
-          markerId: MarkerId(walker.name ?? 'guest'),
+          markerId: MarkerId(walker.id),
           position: LatLng(walker.latitude, walker.longitude),
-          infoWindow: InfoWindow(title: 'Walker: ${walker.name}'),
+          infoWindow: InfoWindow(title: walker.name ?? 'Walker'),
         ),
       );
     }
 
     setState(() {
       _markers = newMarkers;
-      walkers = nearbyWalkers;
-      print(nearbyWalkers);
     });
   }
 
-  void _onMarkerTapped(String walkerId) => print('Marker tapped: $walkerId');
+  void _onMarkerTapped(String walkerId) {
+    developer.log('Marker tapped: $walkerId', name: 'FindWalker');
+  }
+
   void _onRequestPressed(Walker walker) {
     Navigator.push(
       context,
@@ -429,15 +549,11 @@ class _FindWalkerScreenState extends State<FindWalkerScreen> {
     );
   }
 
-  void _onInstantWalkPressed(Walker walker) =>
-      print('Instant walk with: ${walker.id}');
   void _onScheduleWalkPressed() {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) {
-          return ScheduleWalkScreen(availableWalkers: walkers);
-        },
+        builder: (context) => ScheduleWalkScreen(availableWalkers: walkers),
       ),
     );
   }
