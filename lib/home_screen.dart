@@ -3,7 +3,6 @@ import 'package:aidkriya_walker/incoming_requests_screen.dart';
 import 'package:aidkriya_walker/profile_screen.dart';
 import 'package:aidkriya_walker/social_impact_card.dart';
 import 'package:aidkriya_walker/stats_card.dart';
-import 'package:aidkriya_walker/walk_history_page.dart';
 import 'package:aidkriya_walker/walker_of_the_week_card.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -353,11 +352,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _onViewHistoryPressed() {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => const WalkHistoryPage(),
-      ),
-    );
+    print('View history pressed');
   }
 
   void _onWalkerOfWeekTap() {
