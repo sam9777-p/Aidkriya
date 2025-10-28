@@ -1,4 +1,7 @@
+import 'package:aidkriya_walker/profile_screen.dart';
+import 'package:aidkriya_walker/sign_in_screen.dart';
 import 'package:aidkriya_walker/sign_up_screen.dart';
+import 'package:aidkriya_walker/walk_history_page.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -64,7 +67,14 @@ class MyApp extends StatelessWidget {
         scaffoldBackgroundColor: Colors.white,
         fontFamily: 'SF Pro',
       ),
-      home: user != null ? const HomeScreen() : const SignUpScreen(),
+        routes: {
+          '/signup': (context) => const SignUpScreen(),
+          '/login': (context) => const SignInScreen(),
+          '/profile': (context) => const ProfileScreen(),
+          '/home': (context) => const HomeScreen(),
+        },
+      home: user != null ? const HomeScreen() : const SignUpScreen()
+      // home: WalkHistoryPage(),
       // home: IncomingRequestsScreen(),
     );
   }
