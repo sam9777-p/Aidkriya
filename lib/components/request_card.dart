@@ -59,7 +59,7 @@ class RequestCard extends StatelessWidget {
             const SizedBox(height: 16),
             RequestDetailRow(
               icon: Icons.location_on,
-              text: request.distance.toString(),
+              text: "${request.distance.toString()} km",
             ),
             const SizedBox(height: 12),
             RequestDetailRow(

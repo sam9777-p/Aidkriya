@@ -1,5 +1,6 @@
 import 'package:aidkriya_walker/model/incoming_request_display.dart';
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import 'backend/walk_request_service.dart';
@@ -10,7 +11,6 @@ import 'components/request_walker_card.dart';
 import 'components/walk_info_row.dart';
 
 class DetailIncomeRequest extends StatefulWidget {
-  // Constructor now accepts the display model from IncomingRequestsScreen
   final IncomingRequestDisplay displayRequest;
 
   const DetailIncomeRequest({Key? key, required this.displayRequest})
@@ -21,13 +21,63 @@ class DetailIncomeRequest extends StatefulWidget {
 }
 
 class _DetailIncomeRequestState extends State<DetailIncomeRequest> {
-  // Instance of the WalkRequestService
   final WalkRequestService _walkService = WalkRequestService();
   GoogleMapController? _mapController;
 
-  // State for loading indicators on buttons
   bool _isAccepting = false;
   bool _isRejecting = false;
+  bool _isLoadingLocation = true;
+  Position? _currentPosition; // ✅ Store walker's current location
+
+  @override
+  void initState() {
+    super.initState();
+    _getCurrentLocation(); // ✅ Get location on init
+  }
+
+  // ✅ Get walker's current location
+  Future<void> _getCurrentLocation() async {
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        debugPrint('Location services are disabled');
+        setState(() => _isLoadingLocation = false);
+        return;
+      }
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          debugPrint('Location permission denied');
+          setState(() => _isLoadingLocation = false);
+          return;
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        debugPrint('Location permission permanently denied');
+        setState(() => _isLoadingLocation = false);
+        return;
+      }
+
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+
+      setState(() {
+        _currentPosition = position;
+        _isLoadingLocation = false;
+      });
+
+      debugPrint(
+        'Got current location: ${position.latitude}, ${position.longitude}',
+      );
+    } catch (e) {
+      debugPrint('Error getting location: $e');
+      setState(() => _isLoadingLocation = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -38,21 +88,20 @@ class _DetailIncomeRequestState extends State<DetailIncomeRequest> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildMapSection(),
+            _buildMapSection(), // ✅ Fixed map section
             const SizedBox(height: 16),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24.0),
               child: Column(
                 children: [
-                  _buildSenderInfoCard(), // Renamed for clarity
+                  _buildSenderInfoCard(),
                   const SizedBox(height: 24),
                   _buildWalkDetailsSection(),
                   const SizedBox(height: 32),
-                  // Show buttons only if the request is still pending
                   if (widget.displayRequest.status == 'Pending')
                     _buildActionButtons()
                   else
-                    _buildStatusIndicator(), // Show status if not pending
+                    _buildStatusIndicator(),
                   const SizedBox(height: 24),
                 ],
               ),
@@ -72,7 +121,7 @@ class _DetailIncomeRequestState extends State<DetailIncomeRequest> {
         onPressed: () => Navigator.pop(context),
       ),
       title: const Text(
-        'Walk Request Details', // More specific title
+        'Walk Request Details',
         style: TextStyle(
           color: Colors.black,
           fontSize: 20,
@@ -83,101 +132,119 @@ class _DetailIncomeRequestState extends State<DetailIncomeRequest> {
     );
   }
 
+  // ✅ Fixed map section with proper data
   Widget _buildMapSection() {
+    if (_isLoadingLocation) {
+      return SizedBox(
+        height: 300,
+        child: Container(
+          color: Colors.grey[200],
+          child: const Center(child: CircularProgressIndicator()),
+        ),
+      );
+    }
+
+    // Show map even if current location is not available
     return SizedBox(
-      height: 300, // Adjust height as needed
+      height: 300,
       child: RequestMapWidget(
-        // Use walkId for marker uniqueness if name isn't guaranteed unique
-        location: widget.displayRequest.walkId,
-        latitude: widget.displayRequest.latitude,
-        longitude: widget.displayRequest.longitude,
+        // Pass the request location
+        requestLatitude: widget.displayRequest.latitude,
+        requestLongitude: widget.displayRequest.longitude,
+        // Pass walker's current location (can be null)
+        walkerLatitude: _currentPosition?.latitude,
+        walkerLongitude: _currentPosition?.longitude,
+        // Optional: Pass sender name for marker info
+        senderName: widget.displayRequest.senderName,
         onMapCreated: (controller) => _mapController = controller,
       ),
     );
   }
 
   Widget _buildSenderInfoCard() {
-    // Ensure RequestWalkerCard is updated to accept IncomingRequestDisplay
-    // and correctly display senderName, senderImageUrl, senderBio
-    return RequestWalkerCard(
-      walker: widget.displayRequest, // Keep message functionality
-    );
+    return RequestWalkerCard(walker: widget.displayRequest);
   }
 
   Widget _buildWalkDetailsSection() {
-    // Calculate distance if needed, or assume it's pre-calculated/not shown here
-    // String distanceText = widget.displayRequest.distance != null
-    //    ? '${widget.displayRequest.distance!.toStringAsFixed(1)} km away'
-    //    : 'Distance unavailable'; // Fallback
-
     return Column(
       children: [
         WalkInfoRow(
           icon: Icons.calendar_today,
           iconColor: const Color(0xFF6BCBA6),
           primaryText: widget.displayRequest.date,
-          secondaryText: widget.displayRequest.time, // Show time here
+          secondaryText: widget.displayRequest.time,
         ),
         const SizedBox(height: 16),
         WalkInfoRow(
           icon: Icons.hourglass_empty,
           iconColor: const Color(0xFF6BCBA6),
           primaryText: 'Duration',
-          secondaryText: widget.displayRequest.duration, // Show duration
+          secondaryText: widget.displayRequest.duration,
         ),
         const SizedBox(height: 16),
-        // Optional: Show distance if calculated/needed
-        // WalkInfoRow(
-        //   icon: Icons.location_on,
-        //   iconColor: const Color(0xFF6BCBA6),
-        //   primaryText: 'Approx. Distance',
-        //   secondaryText: distanceText,
-        // ),
-        // Optional: Show Notes if available
+        // ✅ Show distance if we have both locations
+        if (_currentPosition != null) ...[
+          WalkInfoRow(
+            icon: Icons.location_on,
+            iconColor: const Color(0xFF6BCBA6),
+            primaryText: 'Distance',
+            secondaryText: _calculateDistance(),
+          ),
+          const SizedBox(height: 16),
+        ],
         if (widget.displayRequest.notes != null &&
             widget.displayRequest.notes!.isNotEmpty) ...[
-          const SizedBox(height: 16),
           WalkInfoRow(
             icon: Icons.note_alt_outlined,
             iconColor: Colors.blueGrey,
             primaryText: 'Notes',
-            secondaryText: widget.displayRequest.notes, // Display notes
+            secondaryText: widget.displayRequest.notes,
           ),
         ],
       ],
     );
   }
 
+  // ✅ Calculate distance between walker and request location
+  String _calculateDistance() {
+    if (_currentPosition == null) return 'Calculating...';
+
+    final distance =
+        Geolocator.distanceBetween(
+          _currentPosition!.latitude,
+          _currentPosition!.longitude,
+          widget.displayRequest.latitude,
+          widget.displayRequest.longitude,
+        ) /
+        1000; // Convert to km
+
+    return '${distance.toStringAsFixed(1)} km away';
+  }
+
   Widget _buildActionButtons() {
-    // Disable buttons if an action is already in progress
     bool isDisabled = _isAccepting || _isRejecting;
 
     return Row(
       children: [
         Expanded(
           child: RejectButton(
-            onPressed: isDisabled
-                ? null
-                : _showRejectConfirmation, // Show confirmation first
+            onPressed: isDisabled ? null : _showRejectConfirmation,
           ),
         ),
         const SizedBox(width: 16),
         Expanded(
           child: AcceptButton(
-            onPressed: isDisabled
-                ? null
-                : _showAcceptConfirmation, // Show confirmation first
+            onPressed: isDisabled ? null : _showAcceptConfirmation,
           ),
         ),
       ],
     );
   }
 
-  /// Shows a confirmation dialog before rejecting.
   void _showRejectConfirmation() {
     showDialog(
       context: context,
-      barrierDismissible: !_isRejecting, // Prevent dismissal while loading
+      barrierDismissible: !_isRejecting,
       builder: (context) => AlertDialog(
         title: const Text('Reject Walk Request'),
         content: const Text(
@@ -185,16 +252,11 @@ class _DetailIncomeRequestState extends State<DetailIncomeRequest> {
         ),
         actions: [
           TextButton(
-            onPressed: _isRejecting
-                ? null
-                : () => Navigator.pop(context), // Close dialog
+            onPressed: _isRejecting ? null : () => Navigator.pop(context),
             child: const Text('Cancel'),
           ),
-          // --- Updated Reject Button ---
           TextButton(
-            onPressed: _isRejecting
-                ? null
-                : _onRejectPressed, // Call actual reject logic
+            onPressed: _isRejecting ? null : _onRejectPressed,
             child: _isRejecting
                 ? const SizedBox(
                     width: 18,
@@ -208,20 +270,18 @@ class _DetailIncomeRequestState extends State<DetailIncomeRequest> {
     );
   }
 
-  /// Handles the actual rejection logic after confirmation.
   Future<void> _onRejectPressed() async {
-    // Prevent multiple calls
     if (_isRejecting || _isAccepting) return;
 
-    setState(() => _isRejecting = true); // Show loading indicator in dialog
+    setState(() => _isRejecting = true);
 
     try {
       bool success = await _walkService.declineRequest(
         widget.displayRequest.walkId,
       );
-      if (!mounted) return; // Check if screen still exists
+      if (!mounted) return;
 
-      Navigator.pop(context); // Close the confirmation dialog
+      Navigator.pop(context);
 
       if (success) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -230,28 +290,27 @@ class _DetailIncomeRequestState extends State<DetailIncomeRequest> {
             backgroundColor: Colors.orange,
           ),
         );
-        Navigator.pop(context); // Go back to the previous screen (request list)
+        Navigator.pop(context);
       } else {
         _showErrorSnackBar('Failed to reject request. Please try again.');
       }
     } catch (e) {
       debugPrint("[DetailIncomeRequest] Error rejecting request: $e");
       if (mounted) {
-        Navigator.pop(context); // Close the confirmation dialog on error
+        Navigator.pop(context);
         _showErrorSnackBar('An error occurred: $e');
       }
     } finally {
       if (mounted) {
-        setState(() => _isRejecting = false); // Hide loading indicator
+        setState(() => _isRejecting = false);
       }
     }
   }
 
-  /// Shows a confirmation dialog before accepting.
   void _showAcceptConfirmation() {
     showDialog(
       context: context,
-      barrierDismissible: !_isAccepting, // Prevent dismissal while loading
+      barrierDismissible: !_isAccepting,
       builder: (context) => AlertDialog(
         title: const Text('Accept Walk Request'),
         content: const Text(
@@ -259,16 +318,11 @@ class _DetailIncomeRequestState extends State<DetailIncomeRequest> {
         ),
         actions: [
           TextButton(
-            onPressed: _isAccepting
-                ? null
-                : () => Navigator.pop(context), // Close dialog
+            onPressed: _isAccepting ? null : () => Navigator.pop(context),
             child: const Text('Cancel'),
           ),
-          // --- Updated Accept Button ---
           TextButton(
-            onPressed: _isAccepting
-                ? null
-                : _onAcceptPressed, // Call actual accept logic
+            onPressed: _isAccepting ? null : _onAcceptPressed,
             child: _isAccepting
                 ? const SizedBox(
                     width: 18,
@@ -285,24 +339,20 @@ class _DetailIncomeRequestState extends State<DetailIncomeRequest> {
     );
   }
 
-  /// Handles the actual acceptance logic after confirmation.
   Future<void> _onAcceptPressed() async {
-    // Prevent multiple calls
     if (_isRejecting || _isAccepting) return;
 
-    setState(() => _isAccepting = true); // Show loading indicator in dialog
+    setState(() => _isAccepting = true);
 
     try {
       bool success = await _walkService.acceptRequest(
         walkId: widget.displayRequest.walkId,
         senderId: widget.displayRequest.senderId,
-        recipientId: widget
-            .displayRequest
-            .recipientId, // This is the current user (Walker)
+        recipientId: widget.displayRequest.recipientId,
       );
-      if (!mounted) return; // Check if screen still exists
+      if (!mounted) return;
 
-      Navigator.pop(context); // Close the confirmation dialog
+      Navigator.pop(context);
 
       if (success) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -311,8 +361,7 @@ class _DetailIncomeRequestState extends State<DetailIncomeRequest> {
             backgroundColor: Colors.green,
           ),
         );
-        // Navigate back to the request list or potentially to an "Active Walk" screen
-        Navigator.pop(context); // Go back to the previous screen (request list)
+        Navigator.pop(context);
       } else {
         _showErrorSnackBar(
           'Failed to accept request. It might have been cancelled or an error occurred.',
@@ -321,20 +370,19 @@ class _DetailIncomeRequestState extends State<DetailIncomeRequest> {
     } catch (e) {
       debugPrint("[DetailIncomeRequest] Error accepting request: $e");
       if (mounted) {
-        Navigator.pop(context); // Close the confirmation dialog on error
+        Navigator.pop(context);
         _showErrorSnackBar('An error occurred: $e');
       }
     } finally {
       if (mounted) {
-        setState(() => _isAccepting = false); // Hide loading indicator
+        setState(() => _isAccepting = false);
       }
     }
   }
 
-  /// Builds a simple text indicator for non-pending statuses.
   Widget _buildStatusIndicator() {
     Color statusColor;
-    String statusText = widget.displayRequest.status; // Get status
+    String statusText = widget.displayRequest.status;
 
     switch (statusText) {
       case 'Accepted':
@@ -347,13 +395,12 @@ class _DetailIncomeRequestState extends State<DetailIncomeRequest> {
       case 'Completed':
         statusColor = Colors.blue;
         break;
-      default: // Pending or unknown
+      default:
         statusColor = Colors.orange;
-        statusText = 'Pending'; // Default to pending if unknown
+        statusText = 'Pending';
         break;
     }
 
-    // Don't show indicator for 'Pending' as buttons are shown instead
     if (statusText == 'Pending') return const SizedBox.shrink();
 
     return Container(
@@ -376,17 +423,6 @@ class _DetailIncomeRequestState extends State<DetailIncomeRequest> {
     );
   }
 
-  // --- Helper Methods ---
-  void _onMessageTapped() {
-    debugPrint(
-      '[DetailIncomeRequest] Open chat with sender ID: ${widget.displayRequest.senderId}',
-    );
-    // TODO: Implement navigation to chat screen using senderId
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Chat functionality not yet implemented.')),
-    );
-  }
-
   void _showErrorSnackBar(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -400,7 +436,7 @@ class _DetailIncomeRequestState extends State<DetailIncomeRequest> {
 
   @override
   void dispose() {
-    _mapController?.dispose(); // Dispose map controller
+    _mapController?.dispose();
     super.dispose();
   }
 }
