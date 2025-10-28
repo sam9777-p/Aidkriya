@@ -6,6 +6,7 @@ class WalkCard extends StatelessWidget {
   final String duration;
   final String distance;
   final String imageUrl;
+  final bool isActive;
 
   const WalkCard({
     super.key,
@@ -14,20 +15,34 @@ class WalkCard extends StatelessWidget {
     required this.duration,
     required this.distance,
     required this.imageUrl,
+    this.isActive = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    final Color baseColor = isActive ? Colors.green.shade400 : Colors.green.shade50;
+    final Color textColor = isActive ? Colors.white : Colors.black87;
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.green.shade50,
+        gradient: isActive
+            ? LinearGradient(
+          colors: [Colors.green.shade400, Colors.green.shade600],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        )
+            : null,
+        color: !isActive ? baseColor : null,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.green.withOpacity(0.15),
-            blurRadius: 6,
+            color: isActive
+                ? Colors.green.withOpacity(0.5)
+                : Colors.green.withOpacity(0.15),
+            blurRadius: isActive ? 10 : 6,
             offset: const Offset(0, 3),
           ),
         ],
@@ -36,7 +51,8 @@ class WalkCard extends StatelessWidget {
         children: [
           CircleAvatar(
             radius: 28,
-            backgroundColor: Colors.green.shade100,
+            backgroundColor:
+            isActive ? Colors.white.withOpacity(0.3) : Colors.green.shade100,
             backgroundImage:
             imageUrl.isNotEmpty ? NetworkImage(imageUrl) : null,
             child: imageUrl.isEmpty
@@ -48,28 +64,60 @@ class WalkCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  "Walk with $name",
-                  style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.black87),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        "Walk with $name",
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: textColor,
+                        ),
+                      ),
+                    ),
+                    if (isActive)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Text(
+                          "Active",
+                          style: TextStyle(
+                              color: Colors.white, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                  ],
                 ),
                 const SizedBox(height: 4),
                 Text(
                   date,
-                  style: TextStyle(color: Colors.grey[700], fontSize: 13),
+                  style: TextStyle(
+                    color: isActive ? Colors.white70 : Colors.grey[700],
+                    fontSize: 13,
+                  ),
                 ),
                 const SizedBox(height: 6),
                 Row(
                   children: [
-                    Icon(Icons.map, size: 16, color: Colors.grey[700]),
+                    Icon(Icons.map,
+                        size: 16,
+                        color: isActive ? Colors.white70 : Colors.grey[700]),
                     const SizedBox(width: 4),
-                    Text(distance, style: TextStyle(color: Colors.grey[700])),
+                    Text(distance,
+                        style: TextStyle(
+                            color: isActive ? Colors.white : Colors.grey[700])),
                     const SizedBox(width: 12),
-                    Icon(Icons.timer, size: 16, color: Colors.grey[700]),
+                    Icon(Icons.timer,
+                        size: 16,
+                        color: isActive ? Colors.white70 : Colors.grey[700]),
                     const SizedBox(width: 4),
-                    Text(duration, style: TextStyle(color: Colors.grey[700])),
+                    Text(duration,
+                        style: TextStyle(
+                            color: isActive ? Colors.white : Colors.grey[700])),
                   ],
                 ),
               ],
@@ -79,10 +127,14 @@ class WalkCard extends StatelessWidget {
             onPressed: () {
               // message logic
             },
-            icon: const Icon(Icons.message_outlined,
-                color: Colors.green, size: 24),
+            icon: Icon(
+              Icons.message_outlined,
+              color: isActive ? Colors.white : Colors.green,
+              size: 24,
+            ),
           ),
-          const Icon(Icons.chevron_right, color: Colors.grey),
+          Icon(Icons.chevron_right,
+              color: isActive ? Colors.white : Colors.grey),
         ],
       ),
     );

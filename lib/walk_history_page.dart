@@ -1,16 +1,54 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-
 import 'walk_card.dart';
 
-class WalkHistoryPage extends StatelessWidget {
+class WalkHistoryPage extends StatefulWidget {
   const WalkHistoryPage({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final user = FirebaseAuth.instance.currentUser;
+  State<WalkHistoryPage> createState() => _WalkHistoryPageState();
+}
 
+class _WalkHistoryPageState extends State<WalkHistoryPage> {
+  final user = FirebaseAuth.instance.currentUser;
+  List<String> journeyIds = [];
+  String? activeWalkId;
+  bool isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    fetchUserJourneys();
+  }
+
+  Future<void> fetchUserJourneys() async {
+    if (user == null) return;
+
+    final doc = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user!.uid)
+        .get();
+
+    final data = doc.data();
+    if (data != null) {
+      final List<dynamic> journeyList = data['journeys'] ?? [];
+      setState(() {
+        journeyIds = journeyList.cast<String>();
+        activeWalkId = data['activeWalkId'];
+        isLoading = false;
+      });
+    } else {
+      setState(() {
+        journeyIds = [];
+        activeWalkId = null;
+        isLoading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.grey[100],
       appBar: AppBar(
@@ -23,64 +61,64 @@ class WalkHistoryPage extends StatelessWidget {
         ),
         actions: [
           IconButton(
-            onPressed: () {},
-            icon: const Icon(Icons.tune, color: Colors.green),
+            onPressed: () {
+              fetchUserJourneys(); // refresh manually if needed
+            },
+            icon: const Icon(Icons.refresh, color: Colors.green),
           ),
         ],
       ),
-      body: user == null
-          ? const Center(child: Text("Please log in"))
-          : StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('users')
-            .doc(user.uid)
-            .collection('journeys')
-            .where('status', isEqualTo: 'Accepted')
-            .snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-            return const Center(child: Text("No accepted walks yet"));
-          }
+      body: isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : journeyIds.isEmpty
+          ? const Center(
+          child: Text("No walk history yet",
+              style: TextStyle(color: Colors.grey, fontSize: 16)))
+          : ListView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: journeyIds.length,
+        itemBuilder: (context, index) {
+          final walkId = journeyIds[index];
+          final isActive = (walkId == activeWalkId);
 
-          final journeys = snapshot.data!.docs;
+          return FutureBuilder<DocumentSnapshot>(
+            future: FirebaseFirestore.instance
+                .collection('accepted_walks')
+                .doc(walkId)
+                .get(),
+            builder: (context, acceptedSnapshot) {
+              if (acceptedSnapshot.connectionState ==
+                  ConnectionState.waiting) {
+                return const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 8),
+                  child: LinearProgressIndicator(),
+                );
+              }
 
-          return ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: journeys.length,
-            itemBuilder: (context, index) {
-              final journey = journeys[index].data() as Map<String, dynamic>;
-              final walkId = journeys[index].id;
+              if (!acceptedSnapshot.hasData ||
+                  !acceptedSnapshot.data!.exists) {
+                return const SizedBox.shrink();
+              }
 
-              return FutureBuilder<DocumentSnapshot>(
-                future: FirebaseFirestore.instance
-                    .collection('accepted_walks')
-                    .doc(walkId)
-                    .get(),
-                builder: (context, acceptedSnapshot) {
-                  if (!acceptedSnapshot.hasData) {
-                    return const SizedBox.shrink();
-                  }
+              final data = acceptedSnapshot.data!.data()
+              as Map<String, dynamic>?;
 
-                  final acceptedData =
-                  acceptedSnapshot.data!.data() as Map<String, dynamic>?;
+              if (data == null) return const SizedBox.shrink();
 
-                  if (acceptedData == null) return const SizedBox.shrink();
+              final walkerProfile =
+                  data['walkerProfile'] ?? <String, dynamic>{};
 
-                  final walkerProfile =
-                      acceptedData['walkerProfile'] ?? {};
+              final name = walkerProfile['name'] ?? 'Unknown';
+              final distance = walkerProfile['distance'] ?? 0;
+              final imageUrl = walkerProfile['imageUrl'] ?? '';
 
-                  return WalkCard(
-                    name: walkerProfile['name'] ?? 'Unknown Walker',
-                    date: acceptedData['date'] ?? 'Unknown date',
-                    duration: acceptedData['duration'] ?? 'Unknown',
-                    distance:
-                    "${(walkerProfile['distance'] ?? 0).toString()} m",
-                    imageUrl: walkerProfile['imageUrl'] ?? '',
-                  );
-                },
+              return WalkCard(
+                name: name,
+                date: data['date'] ?? 'Unknown date',
+                duration: data['duration'] ?? 'Unknown',
+                distance: "$distance m",
+                imageUrl: imageUrl,
+                isActive: isActive,
               );
             },
           );

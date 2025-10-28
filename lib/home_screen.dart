@@ -155,12 +155,15 @@ class _HomeScreenState extends State<HomeScreen> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        const Text(
-          'aidKRIYA Walker',
-          style: TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-            color: Colors.black,
+        Flexible(
+          child: Text(
+            'aidKRIYA Walker',
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: Colors.black,
+            ),
           ),
         ),
         GestureDetector(
@@ -180,21 +183,29 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+
   Widget _buildGreeting() {
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Text(
-          'Good morning, ${_user?.fullName.split(' ').first ?? 'User'} ',
-          style: const TextStyle(
-            fontSize: 32,
-            fontWeight: FontWeight.bold,
-            color: Colors.black,
+        Expanded(
+          child: Text(
+            'Good morning, ${_user?.fullName.split(' ').first ?? 'User'} ',
+            style: const TextStyle(
+              fontSize: 32,
+              fontWeight: FontWeight.bold,
+              color: Colors.black,
+            ),
+            overflow: TextOverflow.ellipsis,
+            maxLines: 1,
+            softWrap: false,
           ),
         ),
         const Text('👋', style: TextStyle(fontSize: 32)),
       ],
     );
   }
+
 
   Widget _buildStatsCards() {
     return Row(
@@ -217,6 +228,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ],
     );
   }
+
 
   Widget _buildSocialImpactCard() {
     return SocialImpactCard(amount: socialImpact, onTap: _onSocialImpactTap);
@@ -258,28 +270,35 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
         const SizedBox(height: 16),
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            children: [
-              WalkerOfTheWeekCard(
-                name: 'Sarah L.',
-                steps: '25,000 steps',
-                imageUrl: null,
-                onTap: _onWalkerOfWeekTap,
-              ),
-              const SizedBox(width: 16),
-              ChallengeCard(
-                title: 'Weekend Walk',
-                description: 'Walk 15km this weekend to earn a badge!',
-                onTap: _onChallengeTap,
-              ),
-            ],
+        SizedBox(
+          height: 180,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            itemCount: 2,
+            separatorBuilder: (_, __) => const SizedBox(width: 16),
+            itemBuilder: (context, index) {
+              if (index == 0) {
+                return WalkerOfTheWeekCard(
+                  name: 'Sarah L.',
+                  steps: '25,000 steps',
+                  imageUrl: null,
+                  onTap: _onWalkerOfWeekTap,
+                );
+              } else {
+                return ChallengeCard(
+                  title: 'Weekend Walk',
+                  description: 'Walk 15km this weekend to earn a badge!',
+                  onTap: _onChallengeTap,
+                );
+              }
+            },
           ),
         ),
       ],
     );
   }
+
 
   Widget _buildBottomNavigationBar() {
     return Container(
