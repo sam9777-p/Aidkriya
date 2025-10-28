@@ -13,10 +13,14 @@ class WalkerListEarly {
   });
 
   factory WalkerListEarly.fromMap(String id, Map data) {
+    // Add checks for null or incorrect types if necessary
+    final lat = (data['latitude'] as num?)?.toDouble() ?? 0.0;
+    final lon = (data['longitude'] as num?)?.toDouble() ?? 0.0;
+    print("WalkerListEarly: Parsing $id - Lat: $lat, Lon: $lon"); // Add print
     return WalkerListEarly(
       id: id,
-      latitude: (data['latitude'] ?? 0).toDouble(),
-      longitude: (data['longitude'] ?? 0).toDouble(),
+      latitude: lat,
+      longitude: lon,
       active: data['active'] ?? false,
     );
   }

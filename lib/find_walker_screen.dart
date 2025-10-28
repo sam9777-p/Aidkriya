@@ -6,7 +6,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import 'components/map_view_widget.dart';
 import 'components/view_toggle.dart';
@@ -28,10 +27,10 @@ class _FindWalkerScreenState extends State<FindWalkerScreen> {
   Map<String, UserModel> _userCache = {};
   StreamSubscription<DatabaseEvent>? _childAddedSub;
   StreamSubscription<DatabaseEvent>? _childChangedSub;
+  StreamSubscription<DatabaseEvent>? _childRemovedSub; // ✅ Add this
   Timer? _updateDebounceTimer;
   bool _isLoading = true;
   Position? myPos;
-  Set<Marker> _markers = {};
   List<Walker> walkers = [];
 
   bool isMapView = true;
@@ -45,7 +44,6 @@ class _FindWalkerScreenState extends State<FindWalkerScreen> {
     _initializeScreen();
   }
 
-  // ✅ Fixed initialization - get location first, then listen
   Future<void> _initializeScreen() async {
     try {
       developer.log('FindWalkerScreen: Initializing...', name: 'FindWalker');
@@ -61,7 +59,7 @@ class _FindWalkerScreenState extends State<FindWalkerScreen> {
         return;
       }
 
-      // Get current position (one-time, no tracking needed)
+      // Get current position
       developer.log(
         'FindWalkerScreen: Getting current position...',
         name: 'FindWalker',
@@ -135,6 +133,7 @@ class _FindWalkerScreenState extends State<FindWalkerScreen> {
     _walkerSub?.cancel();
     _childAddedSub?.cancel();
     _childChangedSub?.cancel();
+    _childRemovedSub?.cancel(); // ✅ Add this
     _updateDebounceTimer?.cancel();
     super.dispose();
   }
@@ -189,6 +188,12 @@ class _FindWalkerScreenState extends State<FindWalkerScreen> {
   }
 
   Widget _buildMapScreen() {
+    // ✅ Add debug print
+    developer.log(
+      'Building map with ${walkers.length} walkers',
+      name: 'FindWalker',
+    );
+
     return Column(
       children: [
         Padding(
@@ -198,8 +203,12 @@ class _FindWalkerScreenState extends State<FindWalkerScreen> {
             child: ClipRRect(
               borderRadius: BorderRadius.circular(18),
               child: MapViewWidget(
+                key: ValueKey(
+                  walkers.length,
+                ), // ✅ Force rebuild when walker count changes
                 walkers: walkers,
                 onMarkerTapped: _onMarkerTapped,
+                initialPosition: myPos,
               ),
             ),
           ),
@@ -397,6 +406,17 @@ class _FindWalkerScreenState extends State<FindWalkerScreen> {
       _handleWalkerUpdate(event);
     });
 
+    // ✅ Listen to walkers being removed
+    _childRemovedSub = ref.onChildRemoved.listen((event) {
+      final id = event.snapshot.key;
+      if (id != null) {
+        setState(() {
+          walkers.removeWhere((w) => w.id == id);
+        });
+        developer.log('Removed walker: $id', name: 'FindWalker');
+      }
+    });
+
     setState(() => _isLoading = false);
     developer.log('FindWalkerScreen: Started listening', name: 'FindWalker');
   }
@@ -409,14 +429,27 @@ class _FindWalkerScreenState extends State<FindWalkerScreen> {
 
     final walkerEarly = WalkerListEarly.fromMap(id, value);
     developer.log(
-      'FindWalkerScreen: Received update for walker $id',
+      'FindWalkerScreen: Received update for walker $id - Active: ${walkerEarly.active}, Lat: ${walkerEarly.latitude}, Lon: ${walkerEarly.longitude}',
       name: 'FindWalker',
     );
 
     // Only handle active walkers
     if (!walkerEarly.active) {
       developer.log(
-        'FindWalkerScreen: Walker $id is not active',
+        'FindWalkerScreen: Walker $id is not active, removing if exists',
+        name: 'FindWalker',
+      );
+      // Remove inactive walker from list
+      setState(() {
+        walkers.removeWhere((w) => w.id == id);
+      });
+      return;
+    }
+
+    // ✅ Validate coordinates immediately
+    if (walkerEarly.latitude == 0.0 || walkerEarly.longitude == 0.0) {
+      developer.log(
+        'FindWalkerScreen: Walker $id has invalid coordinates (0.0, 0.0)',
         name: 'FindWalker',
       );
       return;
@@ -448,18 +481,22 @@ class _FindWalkerScreenState extends State<FindWalkerScreen> {
         1000;
 
     developer.log(
-      'Processing ${walkerEarly.id}. Distance: ${distance.toStringAsFixed(2)} km.',
+      'Processing ${walkerEarly.id}. Distance: ${distance.toStringAsFixed(2)} km. Coords: (${walkerEarly.latitude}, ${walkerEarly.longitude})',
       name: 'WalkerFilter',
     );
 
-    // // Filter walkers by distance
-    // if (distance > 5) {
-    //   developer.log(
-    //     'Walker ${walkerEarly.id} is too far (${distance.toStringAsFixed(2)} km)',
-    //     name: 'WalkerFilter',
-    //   );
-    //   return;
-    // }
+    // Filter walkers by distance
+    if (distance > 5) {
+      developer.log(
+        'Walker ${walkerEarly.id} is too far (${distance.toStringAsFixed(2)} km)',
+        name: 'WalkerFilter',
+      );
+      // Remove if they were previously in range
+      setState(() {
+        walkers.removeWhere((w) => w.id == walkerEarly.id);
+      });
+      return;
+    }
 
     // Fetch cached user profile if not already loaded
     if (!_userCache.containsKey(walkerEarly.id)) {
@@ -502,37 +539,30 @@ class _FindWalkerScreenState extends State<FindWalkerScreen> {
       bio: userModel.bio,
     );
 
+    // ✅ Log the walker being added/updated
+    developer.log(
+      'Adding/Updating walker ${updatedWalker.id}: ${updatedWalker.name} at (${updatedWalker.latitude}, ${updatedWalker.longitude})',
+      name: 'WalkerFilter',
+    );
+
     // Merge or update in the local list
-    final index = walkers.indexWhere((w) => w.id == walkerEarly.id);
-    if (index >= 0) {
-      walkers[index] = updatedWalker;
-    } else {
-      walkers.add(updatedWalker);
-    }
-
-    walkers.sort((a, b) => a.distance.compareTo(b.distance));
-
-    if (mounted) {
-      setState(() {
-        _updateMarkers(walkers);
-      });
-    }
-  }
-
-  void _updateMarkers(List<Walker> nearbyWalkers) {
-    final newMarkers = <Marker>{};
-    for (var walker in nearbyWalkers) {
-      newMarkers.add(
-        Marker(
-          markerId: MarkerId(walker.id),
-          position: LatLng(walker.latitude, walker.longitude),
-          infoWindow: InfoWindow(title: walker.name ?? 'Walker'),
-        ),
-      );
-    }
-
     setState(() {
-      _markers = newMarkers;
+      final index = walkers.indexWhere((w) => w.id == walkerEarly.id);
+      if (index >= 0) {
+        walkers[index] = updatedWalker;
+        developer.log(
+          'Updated existing walker at index $index',
+          name: 'WalkerFilter',
+        );
+      } else {
+        walkers.add(updatedWalker);
+        developer.log(
+          'Added new walker, total count: ${walkers.length}',
+          name: 'WalkerFilter',
+        );
+      }
+
+      walkers.sort((a, b) => a.distance.compareTo(b.distance));
     });
   }
 
