@@ -1,3 +1,6 @@
+// lib/home_screen.dart
+
+import 'dart:async';
 import 'package:aidkriya_walker/backend/location_service.dart';
 import 'package:aidkriya_walker/incoming_requests_screen.dart';
 import 'package:aidkriya_walker/profile_screen.dart';
@@ -8,6 +11,7 @@ import 'package:aidkriya_walker/walker_of_the_week_card.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+
 import 'screens/wanderer_active_walk_screen.dart';
 import 'action_button.dart';
 import 'challenge_card.dart';
@@ -23,6 +27,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
+  // Mock data - replace with data from _user if needed
   int stepsToday = 8500;
   int walksCompleted = 12;
   int socialImpact = 250;
@@ -32,67 +37,69 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isWalker = false;
   bool _isLoading = true;
 
+  StreamSubscription<DocumentSnapshot>? _userSubscription;
+
   @override
   void initState() {
     super.initState();
-    _loadUserData();
+    _subscribeToUserData(); // Use the streaming version
   }
 
-  Future<void> _loadUserData() async {
-    try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) {
-        setState(() => _isLoading = false);
-        return;
-      }
+  // Streams user data, including activeWalkId
+  Future<void> _subscribeToUserData() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      setState(() => _isLoading = false);
+      // Optionally navigate to login screen if user is null
+      return;
+    }
 
-      final doc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .get();
+    debugPrint('HomeScreen: Subscribing to user profile for real-time updates...');
 
-      if (doc.exists) {
+    _userSubscription = FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .snapshots() // Listen for changes
+        .listen((doc) async {
+      if (doc.exists && mounted) { // Add mounted check here
         final data = doc.data()!;
         final userModel = UserModel.fromMap(data);
 
-        // Check role
         final userRole = data['role'];
         final isWalker =
             userRole != null &&
-            (userRole.toString().toLowerCase() == 'walker' ||
-                userRole.toString() == 'Walker');
-
-        print('HomeScreen: User role from Firestore: $userRole');
-        print('HomeScreen: Is Walker: $isWalker');
+                (userRole.toString().toLowerCase() == 'walker' ||
+                    userRole.toString() == 'Walker');
 
         setState(() {
           _user = userModel;
           _isWalker = isWalker;
+          _isLoading = false;
         });
 
-        // ✅ Start location tracking if Walker
-        // LocationService now handles role verification internally as well
-        if (_isWalker && mounted) {
-          print('HomeScreen: Starting location tracking for Walker');
-          await locationService.startTracking(context);
+        // Manage Walker location tracking
+        if (_isWalker) {
+          // Check context validity before using it
+          if (mounted) await locationService.startTracking(context);
         } else {
-          print('HomeScreen: Not starting tracking - User is not a Walker');
-          // Ensure tracking is stopped for non-walkers
           await locationService.stopTracking();
         }
-      }
-    } catch (e) {
-      print('HomeScreen: Error loading user data: $e');
-    } finally {
-      if (mounted) {
+
+        debugPrint('HomeScreen: User profile updated. Role: $userRole, ActiveWalkId: ${_user?.activeWalkId}');
+      } else if (mounted) {
         setState(() => _isLoading = false);
+        debugPrint('HomeScreen: User document does not exist.');
+        // Optionally handle scenario where user doc is deleted (e.g., logout)
       }
-    }
+    }, onError: (error) {
+      debugPrint('HomeScreen: Error streaming user data: $error');
+      if (mounted) setState(() => _isLoading = false);
+    });
   }
 
   @override
   void dispose() {
-
+    _userSubscription?.cancel(); // Cancel the stream
     locationService.stopTracking();
     super.dispose();
   }
@@ -102,6 +109,16 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_isLoading) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
+    if (_user == null && FirebaseAuth.instance.currentUser != null) {
+      // Still loading or user doc missing but auth exists - show loader
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+    if (FirebaseAuth.instance.currentUser == null) {
+      // No user logged in - perhaps show login screen or appropriate UI
+      // For now, showing an empty container or login prompt might be best.
+      return Scaffold(body: Center(child: Text("Please log in.")));
+    }
+
 
     return Scaffold(
       backgroundColor: const Color(0xFFF5F5F5),
@@ -110,45 +127,48 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // This function now uses the live-streamed _user object
   Widget _getCurrentScreen() {
-    // Check if the user has an active walk ID set in their profile
+    // Ensure _user is not null before accessing properties
     final String? activeWalkId = _user?.activeWalkId;
 
     switch (_currentIndex) {
       case 0:
         return _buildHomeContent();
-      case 1:
-
-        if (!_isWalker) {
+      case 1: // Walks/Requests Tab
+        if (!_isWalker) { // User is a Wanderer
           if (activeWalkId != null && activeWalkId.isNotEmpty) {
-            // FIX: If Wanderer has an active walk, show the active walk screen
-            return WandererActiveWalkScreen(walkId: activeWalkId); // [NEW NAVIGATION]
+            // Wanderer has an active walk: show the active walk screen
+            debugPrint("HomeScreen: Wanderer has active walk ($activeWalkId), showing WandererActiveWalkScreen.");
+            return WandererActiveWalkScreen(walkId: activeWalkId);
           } else {
-            // If Wanderer has no active walk, show the Find Walker screen
+            // Wanderer has no active walk: show the Find Walker screen
+            debugPrint("HomeScreen: Wanderer has NO active walk, showing FindWalkerScreen.");
             return const FindWalkerScreen();
           }
         }
-        // --- Walker Logic ---
-        else {
+        else { // User is a Walker
           // Walker always sees requests on this tab
+          debugPrint("HomeScreen: User is Walker, showing IncomingRequestsScreen.");
           return const IncomingRequestsScreen();
         }
-      case 2:
+      case 2: // Community Tab
         return const Center(
           child: Text('Community coming soon!', style: TextStyle(fontSize: 24)),
         );
-      case 3:
+      case 3: // Profile Tab
         return const ProfileScreen();
       default:
         return const Center(child: Text('Unknown tab'));
     }
   }
 
-
-
-
+  // --- UI Build methods ---
 
   Widget _buildHomeContent() {
+    // Ensure _user is not null before building UI dependent on it
+    if (_user == null) return const Center(child: Text("Loading user data..."));
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24.0),
       child: Column(
@@ -190,10 +210,10 @@ class _HomeScreenState extends State<HomeScreen> {
           child: CircleAvatar(
             radius: 20,
             backgroundColor: Colors.grey[300],
-            backgroundImage: _user?.imageUrl != null
+            backgroundImage: _user?.imageUrl != null && _user!.imageUrl!.isNotEmpty
                 ? NetworkImage(_user!.imageUrl!)
-                : null,
-            child: _user?.imageUrl == null
+                : null, // Use null if URL is empty or null
+            child: (_user?.imageUrl == null || _user!.imageUrl!.isEmpty)
                 ? Icon(Icons.person, color: Colors.grey[600])
                 : null,
           ),
@@ -209,6 +229,7 @@ class _HomeScreenState extends State<HomeScreen> {
       children: [
         Expanded(
           child: Text(
+            // Use ?? 'User' as fallback if name is somehow null/empty
             'Good morning, ${_user?.fullName.split(' ').first ?? 'User'} ',
             style: const TextStyle(
               fontSize: 32,
@@ -232,7 +253,7 @@ class _HomeScreenState extends State<HomeScreen> {
         Expanded(
           child: StatsCard(
             title: 'Steps Today',
-            value: stepsToday.toString(),
+            value: stepsToday.toString(), // Replace with real data if available
             onTap: () => _onStatsCardTap('Steps'),
           ),
         ),
@@ -240,7 +261,8 @@ class _HomeScreenState extends State<HomeScreen> {
         Expanded(
           child: StatsCard(
             title: 'Walks\nCompleted',
-            value: walksCompleted.toString(),
+            // Fetch this from _user?.walks or another source if needed
+            value: (_user?.walks ?? walksCompleted).toString(),
             onTap: () => _onStatsCardTap('Walks'),
           ),
         ),
@@ -250,7 +272,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
 
   Widget _buildSocialImpactCard() {
-    return SocialImpactCard(amount: socialImpact, onTap: _onSocialImpactTap);
+    // Fetch this from _user?.earnings or another source if needed
+    return SocialImpactCard(amount: (_user?.earnings ?? socialImpact), onTap: _onSocialImpactTap);
   }
 
   Widget _buildActionButtons() {
@@ -294,14 +317,15 @@ class _HomeScreenState extends State<HomeScreen> {
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             physics: const BouncingScrollPhysics(),
-            itemCount: 2,
+            itemCount: 2, // Example count
             separatorBuilder: (_, __) => const SizedBox(width: 16),
             itemBuilder: (context, index) {
+              // Replace with dynamic data fetching later
               if (index == 0) {
                 return WalkerOfTheWeekCard(
                   name: 'Sarah L.',
                   steps: '25,000 steps',
-                  imageUrl: null,
+                  imageUrl: null, // Provide image URL if available
                   onTap: _onWalkerOfWeekTap,
                 );
               } else {
@@ -367,26 +391,30 @@ class _HomeScreenState extends State<HomeScreen> {
   // --- CALLBACKS ---
 
   void _navigateToProfile() {
-    print('Navigate to profile');
+    setState(() {
+      _currentIndex = 3; // Navigate to Profile tab
+    });
   }
 
   void _onStatsCardTap(String type) {
-    print('Stats card tapped: $type');
+    debugPrint('Stats card tapped: $type');
+    // Potentially navigate to a detailed stats screen
   }
 
   void _onSocialImpactTap() {
-    print('Social impact card tapped');
+    debugPrint('Social impact card tapped');
+    // Potentially navigate to a social impact details screen
   }
 
   void _onFindWalkerPressed() {
     setState(() {
-      _currentIndex = 1;
+      _currentIndex = 1; // Navigate to Walks tab (which shows FindWalkerScreen)
     });
   }
 
   void _onIncomingRequestPressed() {
     setState(() {
-      _currentIndex = 1;
+      _currentIndex = 1; // Navigate to Requests tab
     });
   }
 
@@ -399,10 +427,12 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _onWalkerOfWeekTap() {
-    print('Walker of the week tapped');
+    debugPrint('Walker of the week tapped');
+    // Potentially navigate to the Walker's profile
   }
 
   void _onChallengeTap() {
-    print('Challenge tapped');
+    debugPrint('Challenge tapped');
+    // Potentially navigate to a challenge details screen
   }
 }
