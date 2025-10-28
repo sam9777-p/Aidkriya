@@ -124,9 +124,9 @@ class _ScheduleWalkScreenState extends State<ScheduleWalkScreen> {
     // Check if the selected date is today
     bool isToday =
         selectedDate != null &&
-        selectedDate!.year == now.year &&
-        selectedDate!.month == now.month &&
-        selectedDate!.day == now.day;
+            selectedDate!.year == now.year &&
+            selectedDate!.month == now.month &&
+            selectedDate!.day == now.day;
 
     for (int hour = startHour; hour < endHour; hour++) {
       for (int minute = 0; minute < 60; minute += 30) {
@@ -158,8 +158,8 @@ class _ScheduleWalkScreenState extends State<ScheduleWalkScreen> {
     // If the previously selected time is no longer valid for the new date, reset it
     if (selectedTime != null &&
         !availableTimes.any(
-          (t) =>
-              t.hour == selectedTime!.hour && t.minute == selectedTime!.minute,
+              (t) =>
+          t.hour == selectedTime!.hour && t.minute == selectedTime!.minute,
         )) {
       selectedTime = availableTimes.isNotEmpty ? availableTimes.first : null;
       debugPrint(
@@ -281,9 +281,9 @@ class _ScheduleWalkScreenState extends State<ScheduleWalkScreen> {
           final date = availableDates[index];
           final isSelected =
               selectedDate != null &&
-              date.year == selectedDate!.year &&
-              date.month == selectedDate!.month &&
-              date.day == selectedDate!.day;
+                  date.year == selectedDate!.year &&
+                  date.month == selectedDate!.month &&
+                  date.day == selectedDate!.day;
 
           return DateChip(
             date: date,
@@ -323,8 +323,8 @@ class _ScheduleWalkScreenState extends State<ScheduleWalkScreen> {
       children: availableTimes.map((time) {
         final isSelected =
             selectedTime != null &&
-            selectedTime!.hour == time.hour &&
-            selectedTime!.minute == time.minute;
+                selectedTime!.hour == time.hour &&
+                selectedTime!.minute == time.minute;
         return TimeChip(
           time: time,
           isSelected: isSelected,
@@ -352,39 +352,39 @@ class _ScheduleWalkScreenState extends State<ScheduleWalkScreen> {
         // Create scrollable list if many walkers, otherwise just list them
         (widget.availableWalkers.length > 3)
             ? SizedBox(
-                height: 120 * 3, // Adjust height based on card size
-                child: ListView(
-                  children: widget.availableWalkers.map((walker) {
-                    final isSelected = selectedWalker?.id == walker.id;
-                    return WalkerSelectionCard(
-                      walker: walker,
-                      isSelected: isSelected,
-                      onTap: () => setState(() {
-                        selectedWalker = walker;
-                        debugPrint(
-                          "[ScheduleWalkScreen] Walker selected: ${walker.name} (ID: ${walker.id})",
-                        );
-                      }),
-                    );
-                  }).toList(),
-                ),
-              )
-            : Column(
-                // If few walkers, just display them directly
-                children: widget.availableWalkers.map((walker) {
-                  final isSelected = selectedWalker?.id == walker.id;
-                  return WalkerSelectionCard(
-                    walker: walker,
-                    isSelected: isSelected,
-                    onTap: () => setState(() {
-                      selectedWalker = walker;
-                      debugPrint(
-                        "[ScheduleWalkScreen] Walker selected: ${walker.name} (ID: ${walker.id})",
-                      );
-                    }),
+          height: 120 * 3, // Adjust height based on card size
+          child: ListView(
+            children: widget.availableWalkers.map((walker) {
+              final isSelected = selectedWalker?.id == walker.id;
+              return WalkerSelectionCard(
+                walker: walker,
+                isSelected: isSelected,
+                onTap: () => setState(() {
+                  selectedWalker = walker;
+                  debugPrint(
+                    "[ScheduleWalkScreen] Walker selected: ${walker.name} (ID: ${walker.id})",
                   );
-                }).toList(),
-              ),
+                }),
+              );
+            }).toList(),
+          ),
+        )
+            : Column(
+          // If few walkers, just display them directly
+          children: widget.availableWalkers.map((walker) {
+            final isSelected = selectedWalker?.id == walker.id;
+            return WalkerSelectionCard(
+              walker: walker,
+              isSelected: isSelected,
+              onTap: () => setState(() {
+                selectedWalker = walker;
+                debugPrint(
+                  "[ScheduleWalkScreen] Walker selected: ${walker.name} (ID: ${walker.id})",
+                );
+              }),
+            );
+          }).toList(),
+        ),
       ],
     );
   }
@@ -407,8 +407,8 @@ class _ScheduleWalkScreenState extends State<ScheduleWalkScreen> {
           spacing: 12,
           runSpacing: 12, // Allow wrapping if needed
           children: ['30 min', '45 min', '60 min', '90 min', '120 min'].map((
-            duration,
-          ) {
+              duration,
+              ) {
             return OptionChip(
               label: duration,
               isSelected: selectedDuration == duration,
@@ -515,11 +515,11 @@ class _ScheduleWalkScreenState extends State<ScheduleWalkScreen> {
       child: ElevatedButton(
         // Disable button if loading, not logged in, location missing, or walker not selected
         onPressed:
-            (_isLoading ||
-                _currentUserId == null ||
-                _currentPosition == null ||
-                selectedWalker == null ||
-                _currentUserProfile == null)
+        (_isLoading ||
+            _currentUserId == null ||
+            _currentPosition == null ||
+            selectedWalker == null ||
+            _currentUserProfile == null)
             ? null
             : _onConfirmWalk,
         style: ElevatedButton.styleFrom(
@@ -537,17 +537,17 @@ class _ScheduleWalkScreenState extends State<ScheduleWalkScreen> {
         ),
         child: _isLoading
             ? const SizedBox(
-                height: 24,
-                width: 24,
-                child: CircularProgressIndicator(
-                  color: Colors.white,
-                  strokeWidth: 2.5,
-                ),
-              )
+          height: 24,
+          width: 24,
+          child: CircularProgressIndicator(
+            color: Colors.white,
+            strokeWidth: 2.5,
+          ),
+        )
             : const Text(
-                'Confirm & Send Request',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-              ),
+          'Confirm & Send Request',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+        ),
       ),
     );
   }

@@ -1,3 +1,12 @@
+// lib/detail_income_request.dart
+
+import 'package:aidkriya_walker/model/incoming_request_display.dart';
+import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+
+import 'backend/walk_request_service.dart';
+import 'components/accept_button.dart';
 import 'package:aidkriya_walker/model/incoming_request_display.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
@@ -9,12 +18,14 @@ import 'components/reject_button.dart';
 import 'components/request_map_widget.dart';
 import 'components/request_walker_card.dart';
 import 'components/walk_info_row.dart';
+// THIS IS THE ONLY REQUIRED IMPORT FOR THE SCREEN:
+import 'screens/walk_active_screen.dart'; // <--- Ensure this line is present, and no redundant line is after it.
 
 class DetailIncomeRequest extends StatefulWidget {
   final IncomingRequestDisplay displayRequest;
 
   const DetailIncomeRequest({Key? key, required this.displayRequest})
-    : super(key: key);
+      : super(key: key);
 
   @override
   State<DetailIncomeRequest> createState() => _DetailIncomeRequestState();
@@ -216,7 +227,7 @@ class _DetailIncomeRequestState extends State<DetailIncomeRequest> {
           widget.displayRequest.latitude,
           widget.displayRequest.longitude,
         ) /
-        1000; // Convert to km
+            1000; // Convert to km
 
     return '${distance.toStringAsFixed(1)} km away';
   }
@@ -259,10 +270,10 @@ class _DetailIncomeRequestState extends State<DetailIncomeRequest> {
             onPressed: _isRejecting ? null : _onRejectPressed,
             child: _isRejecting
                 ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
                 : const Text('Reject', style: TextStyle(color: Colors.red)),
           ),
         ],
@@ -325,14 +336,14 @@ class _DetailIncomeRequestState extends State<DetailIncomeRequest> {
             onPressed: _isAccepting ? null : _onAcceptPressed,
             child: _isAccepting
                 ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
                 : const Text(
-                    'Accept',
-                    style: TextStyle(color: Color(0xFF6BCBA6)),
-                  ),
+              'Accept',
+              style: TextStyle(color: Color(0xFF6BCBA6)),
+            ),
           ),
         ],
       ),
@@ -361,11 +372,25 @@ class _DetailIncomeRequestState extends State<DetailIncomeRequest> {
             backgroundColor: Colors.green,
           ),
         );
-        Navigator.pop(context);
+
+        // Navigation to Active Walk Screen
+        if (mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) => WalkActiveScreen(
+                walkData: widget.displayRequest,
+              ),
+            ),
+          );
+        }
+
       } else {
         _showErrorSnackBar(
           'Failed to accept request. It might have been cancelled or an error occurred.',
         );
+        // If acceptance failed, pop the details screen back to the list
+        if (mounted) Navigator.pop(context);
       }
     } catch (e) {
       debugPrint("[DetailIncomeRequest] Error accepting request: $e");

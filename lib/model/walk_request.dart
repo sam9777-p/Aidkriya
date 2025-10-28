@@ -2,6 +2,16 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'Walker.dart';
 
+enum WalkStatus {
+  pending,
+  accepted,
+  enRoute, // New Status: Walker is traveling to Wanderer's location
+  arrived, // New Status: Walker has reached the Wanderer's location
+  started, // New Status: The walk has begun
+  completed,
+  cancelled,
+}
+
 class WalkRequest {
   final String walkId; // Document ID from 'requests' collection
   final String senderId; // ID of the Wanderer sending the request
@@ -33,7 +43,7 @@ class WalkRequest {
     this.updatedAt, // Optional
   });
 
-  // Factory constructor to create WalkRequest from Firestore data
+
   factory WalkRequest.fromMap(Map<String, dynamic> map, String documentId) {
     return WalkRequest(
       walkId: documentId, // Use the document ID passed in

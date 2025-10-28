@@ -8,7 +8,7 @@ import 'package:aidkriya_walker/walker_of_the_week_card.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-
+import 'screens/wanderer_active_walk_screen.dart';
 import 'action_button.dart';
 import 'challenge_card.dart';
 import 'find_walker_screen.dart';
@@ -92,7 +92,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
-    // Always stop tracking when screen is disposed
+
     locationService.stopTracking();
     super.dispose();
   }
@@ -111,13 +111,28 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _getCurrentScreen() {
+    // Check if the user has an active walk ID set in their profile
+    final String? activeWalkId = _user?.activeWalkId;
+
     switch (_currentIndex) {
       case 0:
         return _buildHomeContent();
       case 1:
-        return _isWalker
-            ? const IncomingRequestsScreen()
-            : const FindWalkerScreen();
+
+        if (!_isWalker) {
+          if (activeWalkId != null && activeWalkId.isNotEmpty) {
+            // FIX: If Wanderer has an active walk, show the active walk screen
+            return WandererActiveWalkScreen(walkId: activeWalkId); // [NEW NAVIGATION]
+          } else {
+            // If Wanderer has no active walk, show the Find Walker screen
+            return const FindWalkerScreen();
+          }
+        }
+        // --- Walker Logic ---
+        else {
+          // Walker always sees requests on this tab
+          return const IncomingRequestsScreen();
+        }
       case 2:
         return const Center(
           child: Text('Community coming soon!', style: TextStyle(fontSize: 24)),
@@ -128,6 +143,10 @@ class _HomeScreenState extends State<HomeScreen> {
         return const Center(child: Text('Unknown tab'));
     }
   }
+
+
+
+
 
   Widget _buildHomeContent() {
     return SingleChildScrollView(

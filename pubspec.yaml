@@ -52,7 +52,7 @@ dependencies:
   # Using maintained fork instead of geoflutterfire
   geoflutterfire_plus: ^0.0.3
 
-  intl: ^0.18.0
+  intl: ^0.20.2
   http: ^1.2.0
 
 
