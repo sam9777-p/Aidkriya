@@ -1,3 +1,4 @@
+import 'package:aidkriya_walker/sign_in_screen.dart';
 import 'package:aidkriya_walker/sign_up_screen.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -64,6 +65,11 @@ class MyApp extends StatelessWidget {
         scaffoldBackgroundColor: Colors.white,
         fontFamily: 'SF Pro',
       ),
+        routes: {
+          '/login': (context) => const SignInScreen(),
+          '/signup': (context) => const SignUpScreen(),
+          '/home': (context) => const HomeScreen(),
+        },
       home: user != null ? const HomeScreen() : const SignUpScreen(),
       // home: IncomingRequestsScreen(),
     );
