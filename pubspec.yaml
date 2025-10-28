@@ -53,6 +53,7 @@ dependencies:
   geoflutterfire_plus: ^0.0.3
 
   intl: ^0.18.0
+  http: ^1.2.0
 
 
 dev_dependencies:
