@@ -298,12 +298,12 @@ class _SignInScreenState extends State<SignInScreen> {
                       const SizedBox(height: 24),
 
                       MouseRegion(
-                        onEnter: (_) => setState(() => _isGoogleHovered = true),
-                        onExit: (_) => setState(() => _isGoogleHovered = false),
+                        onEnter: (_) => setState(() => _isEmailHovered = true),
+                        onExit: (_) => setState(() => _isEmailHovered = false),
                         child: ElevatedButton.icon(
-                          onPressed: _isLoading ? null : _signInWithGoogle,
+                          onPressed: _isLoading ? null : _signInWithEmail,
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: _isGoogleHovered
+                            backgroundColor: _isEmailHovered
                                 ? buttonHoverColor(primaryGreen)
                                 : primaryGreen,
                             minimumSize: const Size(double.infinity, 50),
@@ -312,12 +312,11 @@ class _SignInScreenState extends State<SignInScreen> {
                             ),
                           ),
                           icon: const Icon(
-                            Icons.g_mobiledata_rounded,
+                            Icons.mail_outline_rounded,
                             color: Colors.white,
-                            size: 28,
                           ),
                           label: const Text(
-                            "Sign in with Google",
+                            "Sign in with Email",
                             style: TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.bold,
@@ -358,12 +357,12 @@ class _SignInScreenState extends State<SignInScreen> {
                       const SizedBox(height: 16),
 
                       MouseRegion(
-                        onEnter: (_) => setState(() => _isEmailHovered = true),
-                        onExit: (_) => setState(() => _isEmailHovered = false),
+                        onEnter: (_) => setState(() => _isGoogleHovered = true),
+                        onExit: (_) => setState(() => _isGoogleHovered = false),
                         child: ElevatedButton.icon(
-                          onPressed: _isLoading ? null : _signInWithEmail,
+                          onPressed: _isLoading ? null : _signInWithGoogle,
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: _isEmailHovered
+                            backgroundColor: _isGoogleHovered
                                 ? buttonHoverColor(primaryGreen)
                                 : primaryGreen,
                             minimumSize: const Size(double.infinity, 50),
@@ -372,11 +371,12 @@ class _SignInScreenState extends State<SignInScreen> {
                             ),
                           ),
                           icon: const Icon(
-                            Icons.mail_outline_rounded,
+                            Icons.g_mobiledata_rounded,
                             color: Colors.white,
+                            size: 28,
                           ),
                           label: const Text(
-                            "Sign in with Email",
+                            "Sign in with Google",
                             style: TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.bold,

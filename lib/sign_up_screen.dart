@@ -1,10 +1,10 @@
 import 'package:aidkriya_walker/setup_flow_screen.dart';
 import 'package:aidkriya_walker/sign_in_screen.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
 
 class SignUpScreen extends StatefulWidget {
   const SignUpScreen({super.key});
@@ -45,10 +45,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
   void _initializeTokenListener(String uid) {
     FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async {
       try {
-        await _firestore.collection('users').doc(uid).set(
-          {'fcmToken': newToken},
-          SetOptions(merge: true),
-        );
+        await _firestore.collection('users').doc(uid).set({
+          'fcmToken': newToken,
+        }, SetOptions(merge: true));
       } catch (e) {
         debugPrint("Failed to update refreshed FCM token: $e");
       }
@@ -179,7 +178,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
       }
 
       final GoogleSignInAuthentication googleAuth =
-      await googleUser.authentication;
+          await googleUser.authentication;
 
       final credential = GoogleAuthProvider.credential(
         accessToken: googleAuth.accessToken,
@@ -216,7 +215,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
           'createdAt': FieldValue.serverTimestamp(),
         });
       } else {
-
         final Map<String, dynamic> updateMap = {
           if (fcmToken != null) 'fcmToken': fcmToken,
         };
@@ -283,16 +281,16 @@ class _SignUpScreenState extends State<SignUpScreen> {
     Color buttonHoverColor(Color baseColor) {
       return HSLColor.fromColor(baseColor)
           .withLightness(
-        (HSLColor.fromColor(baseColor).lightness * 0.8).clamp(0.3, 0.9),
-      )
+            (HSLColor.fromColor(baseColor).lightness * 0.8).clamp(0.3, 0.9),
+          )
           .toColor();
     }
 
     InputDecoration buildInputDecoration(
-        String hint,
-        FocusNode focusNode, {
-          Widget? suffixIcon,
-        }) {
+      String hint,
+      FocusNode focusNode, {
+      Widget? suffixIcon,
+    }) {
       return InputDecoration(
         hintText: hint,
         hintStyle: TextStyle(
@@ -311,8 +309,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
           borderSide: const BorderSide(color: primaryGreen, width: 1.5),
           borderRadius: BorderRadius.circular(15),
         ),
-        contentPadding:
-        const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+        contentPadding: const EdgeInsets.symmetric(
+          vertical: 14,
+          horizontal: 16,
+        ),
         suffixIcon: suffixIcon,
       );
     }
@@ -374,10 +374,13 @@ class _SignUpScreenState extends State<SignUpScreen> {
                         child: TextField(
                           controller: _nameController,
                           focusNode: _nameFocus,
-                          style:
-                          TextStyle(color: isDark ? textDark : Colors.black),
-                          decoration:
-                          buildInputDecoration("Full Name", _nameFocus),
+                          style: TextStyle(
+                            color: isDark ? textDark : Colors.black,
+                          ),
+                          decoration: buildInputDecoration(
+                            "Full Name",
+                            _nameFocus,
+                          ),
                         ),
                       ),
                       const SizedBox(height: 16),
@@ -387,10 +390,13 @@ class _SignUpScreenState extends State<SignUpScreen> {
                         child: TextField(
                           controller: _emailController,
                           focusNode: _emailFocus,
-                          style:
-                          TextStyle(color: isDark ? textDark : Colors.black),
-                          decoration:
-                          buildInputDecoration("Email", _emailFocus),
+                          style: TextStyle(
+                            color: isDark ? textDark : Colors.black,
+                          ),
+                          decoration: buildInputDecoration(
+                            "Email",
+                            _emailFocus,
+                          ),
                         ),
                       ),
                       const SizedBox(height: 16),
@@ -401,8 +407,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
                           controller: _passwordController,
                           focusNode: _passwordFocus,
                           obscureText: !_isPasswordVisible,
-                          style:
-                          TextStyle(color: isDark ? textDark : Colors.black),
+                          style: TextStyle(
+                            color: isDark ? textDark : Colors.black,
+                          ),
                           decoration: buildInputDecoration(
                             "Password",
                             _passwordFocus,
@@ -425,64 +432,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
                         ),
                       ),
                       const SizedBox(height: 24),
-
-                      MouseRegion(
-                        onEnter: (_) => setState(() => _isGoogleHovered = true),
-                        onExit: (_) => setState(() => _isGoogleHovered = false),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 250),
-                          curve: Curves.easeInOut,
-                          child: ElevatedButton.icon(
-                            onPressed: _isLoading ? null : _signInWithGoogle,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: _isGoogleHovered
-                                  ? buttonHoverColor(primaryGreen)
-                                  : primaryGreen,
-                              minimumSize: const Size(double.infinity, 50),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(15),
-                              ),
-                              elevation: _isGoogleHovered ? 8 : 4,
-                            ),
-                            icon: const Icon(Icons.g_mobiledata_rounded,
-                                color: Colors.white, size: 28),
-                            label: const Text(
-                              "Sign up with Google",
-                              style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-
-                      Row(
-                        children: [
-                          Expanded(
-                              child: Divider(
-                                  color:
-                                  isDark ? Colors.grey[700] : Colors.grey)),
-                          Padding(
-                            padding:
-                            const EdgeInsets.symmetric(horizontal: 8.0),
-                            child: Text(
-                              "Or",
-                              style: TextStyle(
-                                color:
-                                isDark ? Colors.grey[300] : Colors.black87,
-                              ),
-                            ),
-                          ),
-                          Expanded(
-                              child: Divider(
-                                  color:
-                                  isDark ? Colors.grey[700] : Colors.grey)),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-
                       MouseRegion(
                         onEnter: (_) => setState(() => _isEmailHovered = true),
                         onExit: (_) => setState(() => _isEmailHovered = false),
@@ -501,14 +450,81 @@ class _SignUpScreenState extends State<SignUpScreen> {
                               ),
                               elevation: _isEmailHovered ? 8 : 4,
                             ),
-                            icon: const Icon(Icons.person_add_alt_1,
-                                color: Colors.white),
+                            icon: const Icon(
+                              Icons.person_add_alt_1,
+                              color: Colors.white,
+                            ),
                             label: const Text(
                               "Sign up with Email",
                               style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16),
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Divider(
+                              color: isDark ? Colors.grey[700] : Colors.grey,
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8.0,
+                            ),
+                            child: Text(
+                              "Or",
+                              style: TextStyle(
+                                color: isDark
+                                    ? Colors.grey[300]
+                                    : Colors.black87,
+                              ),
+                            ),
+                          ),
+                          Expanded(
+                            child: Divider(
+                              color: isDark ? Colors.grey[700] : Colors.grey,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      MouseRegion(
+                        onEnter: (_) => setState(() => _isGoogleHovered = true),
+                        onExit: (_) => setState(() => _isGoogleHovered = false),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 250),
+                          curve: Curves.easeInOut,
+                          child: ElevatedButton.icon(
+                            onPressed: _isLoading ? null : _signInWithGoogle,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: _isGoogleHovered
+                                  ? buttonHoverColor(primaryGreen)
+                                  : primaryGreen,
+                              minimumSize: const Size(double.infinity, 50),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(15),
+                              ),
+                              elevation: _isGoogleHovered ? 8 : 4,
+                            ),
+                            icon: const Icon(
+                              Icons.g_mobiledata_rounded,
+                              color: Colors.white,
+                              size: 28,
+                            ),
+                            label: const Text(
+                              "Sign up with Google",
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
                             ),
                           ),
                         ),
@@ -523,14 +539,16 @@ class _SignUpScreenState extends State<SignUpScreen> {
                             Navigator.pushReplacement(
                               context,
                               MaterialPageRoute(
-                                  builder: (context) => const SignInScreen()),
+                                builder: (context) => const SignInScreen(),
+                              ),
                             );
                           },
                           child: Text.rich(
                             TextSpan(
                               text: "Already have an account? ",
                               style: TextStyle(
-                                  color: isDark ? textDark : Colors.black),
+                                color: isDark ? textDark : Colors.black,
+                              ),
                               children: [
                                 TextSpan(
                                   text: "Sign In",
@@ -553,8 +571,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       Text(
                         "Terms of Service · Privacy Policy",
                         style: TextStyle(
-                            color: isDark ? Colors.grey[400] : Colors.grey,
-                            fontSize: 12),
+                          color: isDark ? Colors.grey[400] : Colors.grey,
+                          fontSize: 12,
+                        ),
                         textAlign: TextAlign.center,
                       ),
                     ],
