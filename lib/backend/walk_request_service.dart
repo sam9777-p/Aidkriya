@@ -116,6 +116,9 @@ class WalkRequestService {
         acceptedRequestData['createdAt'] = FieldValue.serverTimestamp();
       }
 
+      // Initialize messagesCount to 0 when accepting a walk
+      acceptedRequestData['messagesCount'] = 0;
+
       batch.set(_acceptedWalksCollection.doc(walkId), acceptedRequestData);
 
       // Set activeWalkId for BOTH users
@@ -255,5 +258,71 @@ class WalkRequestService {
       debugPrint("[WalkRequestService] Error declining request $walkId: $e");
       return false;
     }
+  }
+
+  // --- CHAT FUNCTIONALITY ---
+
+  /// Sends a message and updates the walk document's messages sub-collection.
+  Future<void> sendMessage({
+    required String walkId,
+    required String senderId,
+    required String text,
+    // Note: Sender/Recipient ID are available from the Walk document
+  }) async {
+    try {
+      final messageData = {
+        'senderId': senderId,
+        'text': text,
+        'timestamp': FieldValue.serverTimestamp(),
+      };
+
+      // 1. Add message to the messages sub-collection of the accepted walk
+      await _acceptedWalksCollection
+          .doc(walkId)
+          .collection('messages')
+          .add(messageData);
+
+      // 2. [NEW] Increment message counter in the main document (denormalization)
+      await _acceptedWalksCollection.doc(walkId).set(
+        {
+          'messagesCount': FieldValue.increment(1),
+        },
+        SetOptions(merge: true),
+      );
+
+      // 3. [FCM Trigger Placeholder] Fetch the recipient's token and trigger notification
+      final walkDoc = await _acceptedWalksCollection.doc(walkId).get();
+      final walkData = walkDoc.data() as Map<String, dynamic>? ?? {};
+      final recipientId = walkData['senderId'] == senderId
+          ? walkData['recipientId']
+          : walkData['senderId'];
+
+      if (recipientId != null) {
+        // This simulates a backend operation to trigger FCM to the recipient.
+        debugPrint(
+          "[WalkRequestService] FCM PLACEHOLDER: Message sent. Triggering notification for $recipientId...",
+        );
+        // In a real scenario, you would look up the recipientId's fcmToken
+        // in the 'users' collection and send the push notification.
+      }
+
+    } catch (e) {
+      debugPrint("[WalkRequestService] Error sending message for $walkId: $e");
+      throw Exception('Failed to send message.');
+    }
+  }
+
+  /// Streams messages for a given walk ID.
+  Stream<List<Map<String, dynamic>>> getWalkMessages(String walkId) {
+    return _acceptedWalksCollection
+        .doc(walkId)
+        .collection('messages')
+        .orderBy('timestamp', descending: false)
+        .snapshots()
+        .map((snapshot) {
+      return snapshot.docs
+          .map((doc) => doc.data())
+          .toList();
+    });
   }
 }

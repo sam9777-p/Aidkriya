@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 
 import '../backend/walk_request_service.dart';
 import '../model/incoming_request_display.dart';
+import 'chat_screen.dart';
 import 'walk_summary_screen.dart';
 
 class WalkActiveScreen extends StatefulWidget {
@@ -246,8 +247,24 @@ class _WalkActiveScreenState extends State<WalkActiveScreen> {
   }
 
   void _onMessageTapped() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Chat screen navigation coming soon!')),
+    // ScaffoldMessenger.of(context).showSnackBar(
+    //   const SnackBar(content: Text('Chat screen navigation coming soon!')),
+    // ); // [REMOVE] Old placeholder
+
+    // [NEW] Navigate to ChatScreen
+    final isWalker = _currentUserId == widget.walkData.recipientId;
+    final partnerName = isWalker ? widget.walkData.senderName : widget.walkData.recipientId; // Use Wanderer's name
+    final partnerId = isWalker ? widget.walkData.senderId : widget.walkData.recipientId;
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ChatScreen(
+          walkId: widget.walkData.walkId,
+          partnerName: partnerName,
+          partnerId: partnerId,
+        ),
+      ),
     );
   }
 
@@ -298,6 +315,33 @@ class _WalkActiveScreenState extends State<WalkActiveScreen> {
           FloatingActionButton(
             heroTag: 'Chat',
             onPressed: _onMessageTapped,
+            child: const Icon(Icons.chat_bubble_outline),
+          ),
+        ],
+      );
+    }
+    if (status == 'Started') {
+      return Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+// ... (SOS and EndWalk buttons are unchanged)
+          const SizedBox(width: 16),
+          FloatingActionButton(
+            heroTag: 'Chat',
+            onPressed: _onMessageTapped, // [MODIFIED] Use new callback
+            child: const Icon(Icons.chat_bubble_outline),
+          ),
+        ],
+      );
+    } else {
+      return Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+// ... (StartWalk button is unchanged)
+          const SizedBox(width: 16),
+          FloatingActionButton(
+            heroTag: 'Chat',
+            onPressed: _onMessageTapped, // [MODIFIED] Use new callback
             child: const Icon(Icons.chat_bubble_outline),
           ),
         ],

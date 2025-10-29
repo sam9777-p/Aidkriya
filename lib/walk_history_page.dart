@@ -1,7 +1,10 @@
+// lib/walk_history_page.dart
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'walk_card.dart';
+import 'screens/chat_screen.dart'; // [NEW] Import ChatScreen
 
 class WalkHistoryPage extends StatefulWidget {
   const WalkHistoryPage({super.key});
@@ -34,7 +37,8 @@ class _WalkHistoryPageState extends State<WalkHistoryPage> {
     if (data != null) {
       final List<dynamic> journeyList = data['journeys'] ?? [];
       setState(() {
-        journeyIds = journeyList.cast<String>();
+        // Reverse the list to show the most recent walk first
+        journeyIds = journeyList.cast<String>().reversed.toList();
         activeWalkId = data['activeWalkId'];
         isLoading = false;
       });
@@ -45,6 +49,20 @@ class _WalkHistoryPageState extends State<WalkHistoryPage> {
         isLoading = false;
       });
     }
+  }
+
+  // [NEW] Function to handle navigation to chat screen
+  void _navigateToChat(String walkId, String partnerName, String partnerId) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ChatScreen(
+          walkId: walkId,
+          partnerName: partnerName,
+          partnerId: partnerId,
+        ),
+      ),
+    );
   }
 
   @override
@@ -105,20 +123,40 @@ class _WalkHistoryPageState extends State<WalkHistoryPage> {
 
               if (data == null) return const SizedBox.shrink();
 
-              final walkerProfile =
-                  data['walkerProfile'] ?? <String, dynamic>{};
+              // Determine if the current user was the Wanderer (sender) or the Walker (recipient)
+              final isSender = data['senderId'] == user!.uid;
 
-              final name = walkerProfile['name'] ?? 'Unknown';
-              final distance = walkerProfile['distance'] ?? 0;
-              final imageUrl = walkerProfile['imageUrl'] ?? '';
+              // Identify the chat partner's info and ID
+              final partnerId = isSender ? data['recipientId'] : data['senderId'];
+              final partnerProfileData = isSender
+                  ? data['recipientInfo'] as Map<String, dynamic>? // Show Walker's info
+                  : data['senderInfo'] as Map<String, dynamic>?; // Show Wanderer's info
+
+              // Fallback to older walkerProfile structure if necessary
+              final walkerProfileFallback = data['walkerProfile'] ?? <String, dynamic>{};
+
+              final name = partnerProfileData?['fullName'] ?? walkerProfileFallback['name'] ?? 'Unknown';
+              // Use finalStats distance and format it to 1 decimal place. Default to '0.0'
+              final distance = (data['finalStats']?['finalDistanceKm'] as num?)?.toStringAsFixed(1) ?? '0.0';
+              final imageUrl = partnerProfileData?['imageUrl'] ?? walkerProfileFallback['imageUrl'] ?? '';
+              final duration = data['duration'] ?? 'Unknown duration';
+              final date = data['date'] ?? 'Unknown date';
+              final messagesCount = (data['messagesCount'] as num?)?.toInt() ?? 0;
 
               return WalkCard(
                 name: name,
-                date: data['date'] ?? 'Unknown date',
-                duration: data['duration'] ?? 'Unknown',
-                distance: "$distance m",
+                date: date,
+                duration: duration,
+                distance: "$distance km",
                 imageUrl: imageUrl,
                 isActive: isActive,
+                messagesCount: messagesCount,
+                onTap: () { // [NEW] Handle tap to navigate to chat
+                  // Only allow chat if there are messages or the walk is active
+                  if (isActive || messagesCount > 0) {
+                    _navigateToChat(walkId, name, partnerId);
+                  }
+                },
               );
             },
           );

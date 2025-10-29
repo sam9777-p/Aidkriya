@@ -4,12 +4,13 @@ import 'package:aidkriya_walker/screens/walk_summary_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:intl/intl.dart'; // Import for DateFormat if needed for debugging
+import 'package:intl/intl.dart';
 
 import '../backend/walk_request_service.dart';
 import '../model/incoming_request_display.dart';
 import '../find_walker_screen.dart';
 import '../components/walker_avatar.dart';
+import '../screens/chat_screen.dart'; // [NEW] Import ChatScreen
 
 // --- Timer Display Widget (_LiveTimeDisplay) ---
 class _LiveTimeDisplay extends StatefulWidget {
@@ -136,6 +137,23 @@ class _WandererActiveWalkScreenState extends State<WandererActiveWalkScreen> {
       ),
     );
     // Note: No need for .then() or .catchError here as we clear ID first
+  }
+
+  // [NEW] Chat Navigation for Wanderer
+  void _onMessageTapped(Map<String, dynamic> walkData) {
+    final walkerName = walkData['recipientInfo']?['fullName'] ?? 'Walker';
+    final walkerId = walkData['recipientId'] ?? 'unknown';
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ChatScreen(
+          walkId: widget.walkId,
+          partnerName: walkerName,
+          partnerId: walkerId,
+        ),
+      ),
+    );
   }
 
 
@@ -291,9 +309,9 @@ class _WandererActiveWalkScreenState extends State<WandererActiveWalkScreen> {
                 ),
                 const SizedBox(height: 20),
                 ElevatedButton.icon(
-                  onPressed: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Calling/Messaging Walker...'))),
-                  icon: const Icon(Icons.call),
-                  label: const Text("Contact Walker"),
+                  onPressed: () => _onMessageTapped(walkData), // [MODIFIED] Use the chat navigation
+                  icon: const Icon(Icons.message),
+                  label: const Text("Chat with Walker"),
                   style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.blueAccent,
                       foregroundColor: Colors.white,

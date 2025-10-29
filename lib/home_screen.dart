@@ -36,10 +36,15 @@ class _HomeScreenState extends State<HomeScreen> {
 
   StreamSubscription<DocumentSnapshot>? _userSubscription;
 
+  // START: New state for walk status management
+  StreamSubscription<DocumentSnapshot>? _walkStatusSubscription;
+  String? _activeWalkStatus; // To hold the status (e.g., 'Pending', 'Accepted')
+  // END: New state for walk status management
+
   @override
   void initState() {
     super.initState();
-    _subscribeToUserData(); // Use the streaming version
+    _subscribeToUserData();
   }
 
   // Streams user data, including activeWalkId
@@ -61,50 +66,96 @@ class _HomeScreenState extends State<HomeScreen> {
         .snapshots() // Listen for changes
         .listen(
           (doc) async {
-            if (doc.exists && mounted) {
-              // Add mounted check here
-              final data = doc.data()!;
-              final userModel = UserModel.fromMap(data);
+        if (doc.exists && mounted) {
+          // Add mounted check here
+          final data = doc.data()!;
+          final userModel = UserModel.fromMap(data);
 
-              final userRole = data['role'];
-              final isWalker =
-                  userRole != null &&
+          final userRole = data['role'];
+          final isWalker =
+              userRole != null &&
                   (userRole.toString().toLowerCase() == 'walker' ||
                       userRole.toString() == 'Walker');
 
+          final newActiveWalkId = userModel.activeWalkId;
+          final oldActiveWalkId = _user?.activeWalkId; // Check previous value
+
+          setState(() {
+            _user = userModel;
+            _isWalker = isWalker;
+            _isLoading = false;
+          });
+
+          // --- New Logic: Manage Walk Status Subscription for Wanderer ---
+          if (!isWalker && newActiveWalkId != null && newActiveWalkId.isNotEmpty) {
+            // The current walk ID has changed or the subscription is missing/stale
+            if (newActiveWalkId != oldActiveWalkId || _walkStatusSubscription == null) {
+
+              _walkStatusSubscription?.cancel();
+              _walkStatusSubscription = null;
               setState(() {
-                _user = userModel;
-                _isWalker = isWalker;
-                _isLoading = false;
+                _activeWalkStatus = null; // Clear old status while fetching new one
               });
 
-              // Manage Walker location tracking
-              if (_isWalker) {
-                // Check context validity before using it
-                if (mounted) await locationService.startTracking(context);
-              } else {
-                await locationService.stopTracking();
-              }
-
-              debugPrint(
-                'HomeScreen: User profile updated. Role: $userRole, ActiveWalkId: ${_user?.activeWalkId}',
-              );
-            } else if (mounted) {
-              setState(() => _isLoading = false);
-              debugPrint('HomeScreen: User document does not exist.');
-              // Optionally handle scenario where user doc is deleted (e.g., logout)
+              // Start listening to the accepted_walks document for the status
+              _walkStatusSubscription = FirebaseFirestore.instance
+                  .collection('accepted_walks')
+                  .doc(newActiveWalkId)
+                  .snapshots()
+                  .listen((walkDoc) {
+                if (walkDoc.exists && mounted) {
+                  setState(() {
+                    // Update the status
+                    _activeWalkStatus = walkDoc.data()?['status'] as String?;
+                  });
+                  debugPrint('HomeScreen: Walk status updated to: $_activeWalkStatus');
+                } else if (mounted) {
+                  // Document missing (e.g., cancelled/completed/deleted from active_walks)
+                  setState(() {
+                    _activeWalkStatus = null; // Forces back to FindWalkerScreen
+                  });
+                }
+              });
             }
-          },
-          onError: (error) {
-            debugPrint('HomeScreen: Error streaming user data: $error');
-            if (mounted) setState(() => _isLoading = false);
-          },
-        );
+          } else {
+            // User is Walker, or Wanderer with no active walk ID.
+            _walkStatusSubscription?.cancel();
+            _walkStatusSubscription = null;
+            setState(() {
+              _activeWalkStatus = null;
+            });
+          }
+          // --- End New Logic ---
+
+
+          // Manage Walker location tracking
+          if (_isWalker) {
+            // Check context validity before using it
+            if (mounted) await locationService.startTracking(context);
+          } else {
+            await locationService.stopTracking();
+          }
+
+          debugPrint(
+            'HomeScreen: User profile updated. Role: $userRole, ActiveWalkId: ${_user?.activeWalkId}',
+          );
+        } else if (mounted) {
+          setState(() => _isLoading = false);
+          debugPrint('HomeScreen: User document does not exist.');
+          // Optionally handle scenario where user doc is deleted (e.g., logout)
+        }
+      },
+      onError: (error) {
+        debugPrint('HomeScreen: Error streaming user data: $error');
+        if (mounted) setState(() => _isLoading = false);
+      },
+    );
   }
 
   @override
   void dispose() {
-    _userSubscription?.cancel(); // Cancel the stream
+    _userSubscription?.cancel(); // Cancel the user stream
+    _walkStatusSubscription?.cancel(); // Cancel the walk status stream
     locationService.stopTracking();
     super.dispose();
   }
@@ -121,7 +172,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (FirebaseAuth.instance.currentUser == null) {
       // No user logged in - perhaps show login screen or appropriate UI
       // For now, showing an empty container or login prompt might be best.
-      return Scaffold(body: Center(child: Text("Please log in.")));
+      return const Scaffold(body: Center(child: Text("Please log in.")));
     }
 
     return Scaffold(
@@ -131,10 +182,11 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // This function now uses the live-streamed _user object
+  // This function now uses the live-streamed _user object and _activeWalkStatus
   Widget _getCurrentScreen() {
     // Ensure _user is not null before accessing properties
     final String? activeWalkId = _user?.activeWalkId;
+    final String? status = _activeWalkStatus; // Use the streamed status
 
     switch (_currentIndex) {
       case 0:
@@ -142,22 +194,46 @@ class _HomeScreenState extends State<HomeScreen> {
       case 1: // Walks/Requests Tab
         if (!_isWalker) {
           // User is a Wanderer
+
           if (activeWalkId != null && activeWalkId.isNotEmpty) {
-            // Wanderer has an active walk: show the active walk screen
+
+            // 1. Check if status has loaded and indicates an active walk
+            if (status == 'Accepted' || status == 'Started') {
+              debugPrint(
+                "HomeScreen: Wanderer has active walk ($activeWalkId) with status $status, showing WandererActiveWalkScreen.",
+              );
+              return WandererActiveWalkScreen(walkId: activeWalkId);
+            }
+
+            // 2. Check if status is still loading (status is null)
+            else if (status == null) {
+              // Show a temporary screen while waiting for the status to stream
+              debugPrint(
+                "HomeScreen: Wanderer waiting for walk status...",
+              );
+              return const Scaffold(body: Center(child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text("Checking walk status...")
+                ],
+              )));
+            }
+            // 3. Status loaded but is 'Pending' or some other non-active state
+            // (or implicitly null/empty which is covered by the outer check)
+
+            // Fall through to show FindWalkerScreen for 'Pending' or other non-active states.
             debugPrint(
-              "HomeScreen: Wanderer has active walk ($activeWalkId), showing WandererActiveWalkScreen.",
+              "HomeScreen: Wanderer has non-active walk ID $activeWalkId with status $status, showing FindWalkerScreen.",
             );
-            return WandererActiveWalkScreen(walkId: activeWalkId);
-          } else {
-            // Wanderer has no active walk: show the Find Walker screen
-            debugPrint(
-              "HomeScreen: Wanderer has NO active walk, showing FindWalkerScreen.",
-            );
-            return const FindWalkerScreen();
           }
+
+          // 4. No Active Walk ID
+          return const FindWalkerScreen();
+
         } else {
           // User is a Walker
-          // Walker always sees requests on this tab
           debugPrint(
             "HomeScreen: User is Walker, showing IncomingRequestsScreen.",
           );
@@ -170,7 +246,8 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  // --- UI Build methods ---
+  // ... rest of the class methods ...
+// (omitting for brevity, no other changes needed)
 
   Widget _buildHomeContent() {
     // Ensure _user is not null before building UI dependent on it
@@ -217,7 +294,7 @@ class _HomeScreenState extends State<HomeScreen> {
             radius: 20,
             backgroundColor: Colors.grey[300],
             backgroundImage:
-                _user?.imageUrl != null && _user!.imageUrl!.isNotEmpty
+            _user?.imageUrl != null && _user!.imageUrl!.isNotEmpty
                 ? NetworkImage(_user!.imageUrl!)
                 : null, // Use null if URL is empty or null
             child: (_user?.imageUrl == null || _user!.imageUrl!.isEmpty)
