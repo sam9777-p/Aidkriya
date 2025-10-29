@@ -2,6 +2,8 @@
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:http/http.dart' as http; // Required for HTTP requests
+import 'dart:convert'; // Required for JSON encoding
 
 import '../model/walk_request.dart';
 
@@ -32,6 +34,45 @@ class WalkRequestService {
   final CollectionReference _usersCollection =
   FirebaseFirestore.instance.collection('users');
 
+  // [UPDATED] Use the real deployed URL for the Node.js server
+  static const String NODE_SERVER_URL = "https://aid-backend-1.onrender.com/api/sendNotification";
+
+  // --- Custom Server HTTP Notification Sender ---
+  /// This function calls your Node.js server to send FCM.
+  Future<void> _sendNotificationToServer({
+    required String recipientId,
+    required String notificationType,
+    required Map<String, dynamic> data,
+  }) async {
+
+    final payload = {
+      'recipientId': recipientId,
+      'type': notificationType,
+      'data': data,
+    };
+
+    try {
+      // [UNCOMMENTED] Actual HTTP POST call to the external server
+      final response = await http.post(
+        Uri.parse(NODE_SERVER_URL),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(payload),
+      );
+
+      if (response.statusCode != 200) {
+        debugPrint(
+            "[WalkRequestService] HTTP Error: Server responded with status ${response.statusCode}");
+      } else {
+        debugPrint(
+            "[WalkRequestService] HTTP Success: Notification request sent to server successfully.");
+      }
+    } catch (e) {
+      debugPrint("[WalkRequestService] HTTP Post Failed: $e");
+    }
+  }
+  // --- END Custom Server HTTP Notification Sender ---
+
+
   /// ------------------ SEND REQUEST ------------------
   Future<String?> sendRequest(Map<String, dynamic> requestData) async {
     try {
@@ -45,8 +86,17 @@ class WalkRequestService {
       requestData['updatedAt'] = FieldValue.serverTimestamp();
 
       DocumentReference docRef = await _requestsCollection.add(requestData);
+      final walkId = docRef.id;
+
+      // [TRIGGER] Trigger FCM via custom server for the Walker (Recipient)
+      _sendNotificationToServer(
+        recipientId: requestData['recipientId'] as String,
+        notificationType: 'new_request',
+        data: {'walkId': walkId, 'senderName': requestData['senderInfo']['fullName']},
+      );
+
       debugPrint(
-          "[WalkRequestService] Request sent successfully with ID: ${docRef.id}");
+          "[WalkRequestService] Request sent successfully with ID: $walkId");
       return docRef.id;
     } catch (e) {
       debugPrint("[WalkRequestService] Error sending request: $e");
@@ -116,7 +166,6 @@ class WalkRequestService {
         acceptedRequestData['createdAt'] = FieldValue.serverTimestamp();
       }
 
-      // Initialize messagesCount to 0 when accepting a walk
       acceptedRequestData['messagesCount'] = 0;
 
       batch.set(_acceptedWalksCollection.doc(walkId), acceptedRequestData);
@@ -132,6 +181,14 @@ class WalkRequestService {
       });
 
       await batch.commit();
+
+      // [TRIGGER] Trigger FCM via custom server for the Wanderer (Sender)
+      _sendNotificationToServer(
+        recipientId: senderId,
+        notificationType: 'request_accepted',
+        data: {'walkId': walkId, 'walkerName': acceptedRequestData['recipientInfo']['fullName']},
+      );
+
       debugPrint("[WalkRequestService] Request $walkId accepted successfully");
       return true;
     } catch (e) {
@@ -153,6 +210,21 @@ class WalkRequestService {
       batch.update(_requestsCollection.doc(walkId), updateData);
       batch.update(_acceptedWalksCollection.doc(walkId), updateData);
       await batch.commit();
+
+      // Fetch walk data to get sender ID for notification
+      final walkDoc = await _acceptedWalksCollection.doc(walkId).get();
+      final walkData = walkDoc.data() as Map<String, dynamic>? ?? {};
+      final senderId = walkData['senderId'] as String? ?? '';
+
+      // [TRIGGER] Trigger FCM via custom server for the Wanderer (Sender)
+      if(senderId.isNotEmpty) {
+        _sendNotificationToServer(
+          recipientId: senderId,
+          notificationType: 'walk_started',
+          data: {'walkId': walkId},
+        );
+      }
+
       debugPrint("[WalkRequestService] Walk $walkId started successfully");
       return true;
     } catch (e) {
@@ -161,7 +233,6 @@ class WalkRequestService {
     }
   }
 
-  /// ------------------ END / COMPLETE WALK ------------------
   /// ------------------ END / COMPLETE WALK ------------------
   Future<Map<String, dynamic>> endWalk({
     required String walkId,
@@ -240,6 +311,22 @@ class WalkRequestService {
       'status': status,
     });
 
+    // [TRIGGER] Trigger FCM via custom server for both parties about the end status
+    if (senderId != null) {
+      _sendNotificationToServer(
+        recipientId: senderId,
+        notificationType: 'walk_ended',
+        data: {'walkId': walkId, 'status': status},
+      );
+    }
+    if (recipientId != null) {
+      _sendNotificationToServer(
+        recipientId: recipientId,
+        notificationType: 'walk_ended',
+        data: {'walkId': walkId, 'status': status},
+      );
+    }
+
     debugPrint(
         "[WalkRequestService] Confirmed finalStats & status persisted for accepted_walks/$walkId");
 
@@ -251,7 +338,22 @@ class WalkRequestService {
   Future<bool> declineRequest(String walkId) async {
     debugPrint("[WalkRequestService] Declining request: $walkId");
     try {
+      // Fetch walk data to get sender ID
+      final walkDoc = await _requestsCollection.doc(walkId).get();
+      final walkData = walkDoc.data() as Map<String, dynamic>? ?? {};
+      final senderId = walkData['senderId'] as String? ?? '';
+
       await _requestsCollection.doc(walkId).delete();
+
+      // [TRIGGER] Trigger FCM via custom server for the Wanderer (Sender)
+      if(senderId.isNotEmpty) {
+        _sendNotificationToServer(
+          recipientId: senderId,
+          notificationType: 'request_declined',
+          data: {'walkId': walkId},
+        );
+      }
+
       debugPrint("[WalkRequestService] Request $walkId declined successfully");
       return true;
     } catch (e) {
@@ -267,7 +369,6 @@ class WalkRequestService {
     required String walkId,
     required String senderId,
     required String text,
-    // Note: Sender/Recipient ID are available from the Walk document
   }) async {
     try {
       final messageData = {
@@ -282,7 +383,7 @@ class WalkRequestService {
           .collection('messages')
           .add(messageData);
 
-      // 2. [NEW] Increment message counter in the main document (denormalization)
+      // 2. Increment message counter in the main document (denormalization)
       await _acceptedWalksCollection.doc(walkId).set(
         {
           'messagesCount': FieldValue.increment(1),
@@ -290,20 +391,22 @@ class WalkRequestService {
         SetOptions(merge: true),
       );
 
-      // 3. [FCM Trigger Placeholder] Fetch the recipient's token and trigger notification
+      // 3. Identify recipient and trigger notification
       final walkDoc = await _acceptedWalksCollection.doc(walkId).get();
       final walkData = walkDoc.data() as Map<String, dynamic>? ?? {};
-      final recipientId = walkData['senderId'] == senderId
+
+      final isSenderTheWanderer = walkData['senderId'] == senderId;
+
+      final recipientId = isSenderTheWanderer
           ? walkData['recipientId']
           : walkData['senderId'];
 
       if (recipientId != null) {
-        // This simulates a backend operation to trigger FCM to the recipient.
-        debugPrint(
-          "[WalkRequestService] FCM PLACEHOLDER: Message sent. Triggering notification for $recipientId...",
+        _sendNotificationToServer(
+          recipientId: recipientId,
+          notificationType: 'new_message',
+          data: {'walkId': walkId, 'senderId': senderId, 'message': text},
         );
-        // In a real scenario, you would look up the recipientId's fcmToken
-        // in the 'users' collection and send the push notification.
       }
 
     } catch (e) {

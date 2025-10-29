@@ -7,19 +7,12 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import 'backend/walk_request_service.dart';
 import 'components/accept_button.dart';
-import 'package:aidkriya_walker/model/incoming_request_display.dart';
-import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
-
-import 'backend/walk_request_service.dart';
-import 'components/accept_button.dart';
 import 'components/reject_button.dart';
 import 'components/request_map_widget.dart';
 import 'components/request_walker_card.dart';
 import 'components/walk_info_row.dart';
 // THIS IS THE ONLY REQUIRED IMPORT FOR THE SCREEN:
-import 'screens/walk_active_screen.dart'; // <--- Ensure this line is present, and no redundant line is after it.
+import 'screens/walk_active_screen.dart';
 
 class DetailIncomeRequest extends StatefulWidget {
   final IncomingRequestDisplay displayRequest;
@@ -38,15 +31,15 @@ class _DetailIncomeRequestState extends State<DetailIncomeRequest> {
   bool _isAccepting = false;
   bool _isRejecting = false;
   bool _isLoadingLocation = true;
-  Position? _currentPosition; // ✅ Store walker's current location
+  Position? _currentPosition; // Store walker's current location
 
   @override
   void initState() {
     super.initState();
-    _getCurrentLocation(); // ✅ Get location on init
+    _getCurrentLocation(); // Get location on init
   }
 
-  // ✅ Get walker's current location
+  // Get walker's current location
   Future<void> _getCurrentLocation() async {
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
@@ -99,7 +92,7 @@ class _DetailIncomeRequestState extends State<DetailIncomeRequest> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildMapSection(), // ✅ Fixed map section
+            _buildMapSection(), // Fixed map section
             const SizedBox(height: 16),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24.0),
@@ -143,7 +136,7 @@ class _DetailIncomeRequestState extends State<DetailIncomeRequest> {
     );
   }
 
-  // ✅ Fixed map section with proper data
+  // Fixed map section with proper data
   Widget _buildMapSection() {
     if (_isLoadingLocation) {
       return SizedBox(
@@ -193,13 +186,13 @@ class _DetailIncomeRequestState extends State<DetailIncomeRequest> {
           secondaryText: widget.displayRequest.duration,
         ),
         const SizedBox(height: 16),
-        // ✅ Show distance if we have both locations
+        // Show distance if we have both locations
         if (_currentPosition != null) ...[
           WalkInfoRow(
             icon: Icons.location_on,
             iconColor: const Color(0xFF6BCBA6),
             primaryText: 'Distance',
-            secondaryText: _calculateDistance(),
+            secondaryText: _calculateDistanceString(), // Use the formatted string
           ),
           const SizedBox(height: 16),
         ],
@@ -216,19 +209,23 @@ class _DetailIncomeRequestState extends State<DetailIncomeRequest> {
     );
   }
 
-  // ✅ Calculate distance between walker and request location
-  String _calculateDistance() {
-    if (_currentPosition == null) return 'Calculating...';
+  // Utility to calculate raw distance value in KM (double)
+  double _calculateDistanceValue() {
+    if (_currentPosition == null) return 0.0;
 
-    final distance =
-        Geolocator.distanceBetween(
-          _currentPosition!.latitude,
-          _currentPosition!.longitude,
-          widget.displayRequest.latitude,
-          widget.displayRequest.longitude,
-        ) /
-            1000; // Convert to km
+    final distanceInMeters = Geolocator.distanceBetween(
+      _currentPosition!.latitude,
+      _currentPosition!.longitude,
+      widget.displayRequest.latitude,
+      widget.displayRequest.longitude,
+    );
 
+    return distanceInMeters / 1000.0; // Return distance in km as a double
+  }
+
+  // Utility to display the formatted distance string
+  String _calculateDistanceString() {
+    final distance = _calculateDistanceValue();
     return '${distance.toStringAsFixed(1)} km away';
   }
 
@@ -373,13 +370,31 @@ class _DetailIncomeRequestState extends State<DetailIncomeRequest> {
           ),
         );
 
+        // --- FIX: Create a new, updated WalkData object to pass ---
+        final updatedWalkData = IncomingRequestDisplay(
+          walkId: widget.displayRequest.walkId,
+          senderId: widget.displayRequest.senderId,
+          recipientId: widget.displayRequest.recipientId,
+          senderName: widget.displayRequest.senderName,
+          senderImageUrl: widget.displayRequest.senderImageUrl,
+          senderBio: widget.displayRequest.senderBio,
+          date: widget.displayRequest.date,
+          time: widget.displayRequest.time,
+          duration: widget.displayRequest.duration,
+          latitude: widget.displayRequest.latitude,
+          longitude: widget.displayRequest.longitude,
+          status: 'Accepted', // The new status
+          distance: _calculateDistanceValue().toInt(), // Use the calculated distance
+          notes: widget.displayRequest.notes,
+        );
+
         // Navigation to Active Walk Screen
         if (mounted) {
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(
               builder: (context) => WalkActiveScreen(
-                walkData: widget.displayRequest,
+                walkData: updatedWalkData, // Pass the FIXED object
               ),
             ),
           );
