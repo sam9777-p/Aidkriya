@@ -8,6 +8,7 @@ import 'package:aidkriya_walker/stats_card.dart';
 import 'package:aidkriya_walker/walk_history_page.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 
 import 'action_button.dart';
@@ -45,6 +46,31 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _subscribeToUserData();
+    _updateFcmToken();
+  }
+
+  Future<void> _updateFcmToken() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+
+      // Get the latest FCM token
+      final token = await FirebaseMessaging.instance.getToken();
+      if (token == null) {
+        debugPrint("⚠️ Unable to get FCM token");
+        return;
+      }
+
+      // Update token in Firestore
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .update({'fcmToken': token});
+
+      debugPrint("✅ FCM token updated successfully: $token");
+    } catch (e) {
+      debugPrint("❌ Error updating FCM token: $e");
+    }
   }
 
   // Streams user data, including activeWalkId
@@ -469,3 +495,4 @@ class _HomeScreenState extends State<HomeScreen> {
     // Potentially navigate to a challenge details screen
   }
 }
+

@@ -1,7 +1,7 @@
-// lib/backend/walk_request_service.dart
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 
 import '../model/walk_request.dart';
 
@@ -12,14 +12,12 @@ double _calculateFare({
   required double agreedRatePerHour,
 }) {
   if (elapsedMinutes >= scheduledDurationMinutes) {
-    // Walk completed fully or auto-completed on schedule. Pay full agreed fare.
     return (scheduledDurationMinutes / 60.0) * agreedRatePerHour;
   }
   if (elapsedMinutes > 0 && elapsedMinutes < scheduledDurationMinutes) {
-    // Walk ended early (by Wanderer or a mid-point agreement). Pay pro-rata.
     return (elapsedMinutes / 60.0) * agreedRatePerHour;
   }
-  return 0.0; // Walk ended instantly or prematurely without significant time passing.
+  return 0.0;
 }
 
 class WalkRequestService {
@@ -31,6 +29,36 @@ class WalkRequestService {
   FirebaseFirestore.instance.collection('accepted_walks');
   final CollectionReference _usersCollection =
   FirebaseFirestore.instance.collection('users');
+
+  // 🔥 Replace this with your deployed backend URL
+  final String _serverUrl = "https://aid-backend-1.onrender.com/api/sendNotification";
+
+  // -------------------- Helper to trigger FCM via backend --------------------
+  Future<void> _triggerNotification({
+    required String recipientId,
+    required String type,
+    Map<String, dynamic>? data,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse(_serverUrl),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'recipientId': recipientId,
+          'type': type,
+          'data': data ?? {},
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        debugPrint("[FCM] Notification sent successfully for type: $type");
+      } else {
+        debugPrint("[FCM] Failed to send notification (${response.statusCode}): ${response.body}");
+      }
+    } catch (e) {
+      debugPrint("[FCM] Error sending notification: $e");
+    }
+  }
 
   /// ------------------ SEND REQUEST ------------------
   Future<String?> sendRequest(Map<String, dynamic> requestData) async {
@@ -45,8 +73,18 @@ class WalkRequestService {
       requestData['updatedAt'] = FieldValue.serverTimestamp();
 
       DocumentReference docRef = await _requestsCollection.add(requestData);
-      debugPrint(
-          "[WalkRequestService] Request sent successfully with ID: ${docRef.id}");
+      debugPrint("[WalkRequestService] Request sent successfully with ID: ${docRef.id}");
+
+      // ✅ Notify walker (recipient)
+      await _triggerNotification(
+        recipientId: requestData['recipientId'],
+        type: 'walk_request',
+        data: {
+          'walkId': docRef.id,
+          'senderId': requestData['senderId'],
+        },
+      );
+
       return docRef.id;
     } catch (e) {
       debugPrint("[WalkRequestService] Error sending request: $e");
@@ -83,8 +121,8 @@ class WalkRequestService {
   /// ------------------ ACCEPT REQUEST ------------------
   Future<bool> acceptRequest({
     required String walkId,
-    required String senderId, // Wanderer ID
-    required String recipientId, // Walker ID
+    required String senderId,
+    required String recipientId,
   }) async {
     debugPrint("[WalkRequestService] Attempting to accept request: $walkId");
     try {
@@ -95,7 +133,6 @@ class WalkRequestService {
       Map<String, dynamic> acceptedRequestData =
       requestDoc.data() as Map<String, dynamic>;
 
-      // Delete other pending requests from this wanderer
       QuerySnapshot otherPendingRequests = await _requestsCollection
           .where('senderId', isEqualTo: senderId)
           .where('status', isEqualTo: 'Pending')
@@ -111,17 +148,10 @@ class WalkRequestService {
 
       acceptedRequestData['status'] = 'Accepted';
       acceptedRequestData['updatedAt'] = FieldValue.serverTimestamp();
-      if (acceptedRequestData['createdAt'] == null ||
-          !(acceptedRequestData['createdAt'] is Timestamp)) {
-        acceptedRequestData['createdAt'] = FieldValue.serverTimestamp();
-      }
-
-      // Initialize messagesCount to 0 when accepting a walk
       acceptedRequestData['messagesCount'] = 0;
 
       batch.set(_acceptedWalksCollection.doc(walkId), acceptedRequestData);
 
-      // Set activeWalkId for BOTH users
       batch.update(_usersCollection.doc(senderId), {
         'journeys': FieldValue.arrayUnion([walkId]),
         'activeWalkId': walkId,
@@ -133,6 +163,14 @@ class WalkRequestService {
 
       await batch.commit();
       debugPrint("[WalkRequestService] Request $walkId accepted successfully");
+
+      // ✅ Notify wanderer (sender)
+      await _triggerNotification(
+        recipientId: senderId,
+        type: 'request_accepted',
+        data: {'walkId': walkId},
+      );
+
       return true;
     } catch (e) {
       debugPrint("[WalkRequestService] Error accepting request $walkId: $e");
@@ -153,6 +191,21 @@ class WalkRequestService {
       batch.update(_requestsCollection.doc(walkId), updateData);
       batch.update(_acceptedWalksCollection.doc(walkId), updateData);
       await batch.commit();
+
+      // ✅ Notify both users
+      final walkDoc = await _acceptedWalksCollection.doc(walkId).get();
+      final data = walkDoc.data() as Map<String, dynamic>;
+      await _triggerNotification(
+        recipientId: data['senderId'],
+        type: 'walk_started',
+        data: {'walkId': walkId},
+      );
+      await _triggerNotification(
+        recipientId: data['recipientId'],
+        type: 'walk_started',
+        data: {'walkId': walkId},
+      );
+
       debugPrint("[WalkRequestService] Walk $walkId started successfully");
       return true;
     } catch (e) {
@@ -161,7 +214,6 @@ class WalkRequestService {
     }
   }
 
-  /// ------------------ END / COMPLETE WALK ------------------
   /// ------------------ END / COMPLETE WALK ------------------
   Future<Map<String, dynamic>> endWalk({
     required String walkId,
@@ -180,7 +232,6 @@ class WalkRequestService {
     String status;
     double amountDue;
 
-    // --- Determine Status + Fare ---
     if (isWalker && elapsedMinutes < scheduledDurationMinutes) {
       status = 'CancelledByWalker';
       amountDue = 0.0;
@@ -214,11 +265,9 @@ class WalkRequestService {
       'finalStats': finalStatsData,
     };
 
-    // ✅ Ensure both collections get updated
     batch.update(_requestsCollection.doc(walkId), endData);
     batch.update(_acceptedWalksCollection.doc(walkId), endData);
 
-    // --- Clear Active Walk for both users ---
     final walkDoc = await _acceptedWalksCollection.doc(walkId).get();
     final walkData = walkDoc.data() as Map<String, dynamic>? ?? {};
     final senderId = walkData['senderId'] as String?;
@@ -232,20 +281,30 @@ class WalkRequestService {
     }
 
     await batch.commit();
-    debugPrint("[WalkRequestService] Batch committed successfully for $walkId");
 
-    // ✅ Extra safeguard: Ensure finalStats exist in accepted_walks after commit
     await _firestore.collection('accepted_walks').doc(walkId).update({
       'finalStats': finalStatsData,
       'status': status,
     });
 
-    debugPrint(
-        "[WalkRequestService] Confirmed finalStats & status persisted for accepted_walks/$walkId");
+    // ✅ Notify both users
+    if (senderId != null) {
+      await _triggerNotification(
+        recipientId: senderId,
+        type: 'walk_$status',
+        data: {'walkId': walkId, 'status': status},
+      );
+    }
+    if (recipientId != null) {
+      await _triggerNotification(
+        recipientId: recipientId,
+        type: 'walk_$status',
+        data: {'walkId': walkId, 'status': status},
+      );
+    }
 
     return finalStatsData;
   }
-
 
   /// ------------------ DECLINE REQUEST ------------------
   Future<bool> declineRequest(String walkId) async {
@@ -260,14 +319,11 @@ class WalkRequestService {
     }
   }
 
-  // --- CHAT FUNCTIONALITY ---
-
-  /// Sends a message and updates the walk document's messages sub-collection.
+  /// ------------------ CHAT FUNCTIONALITY ------------------
   Future<void> sendMessage({
     required String walkId,
     required String senderId,
     required String text,
-    // Note: Sender/Recipient ID are available from the Walk document
   }) async {
     try {
       final messageData = {
@@ -276,13 +332,11 @@ class WalkRequestService {
         'timestamp': FieldValue.serverTimestamp(),
       };
 
-      // 1. Add message to the messages sub-collection of the accepted walk
       await _acceptedWalksCollection
           .doc(walkId)
           .collection('messages')
           .add(messageData);
 
-      // 2. [NEW] Increment message counter in the main document (denormalization)
       await _acceptedWalksCollection.doc(walkId).set(
         {
           'messagesCount': FieldValue.increment(1),
@@ -290,7 +344,6 @@ class WalkRequestService {
         SetOptions(merge: true),
       );
 
-      // 3. [FCM Trigger Placeholder] Fetch the recipient's token and trigger notification
       final walkDoc = await _acceptedWalksCollection.doc(walkId).get();
       final walkData = walkDoc.data() as Map<String, dynamic>? ?? {};
       final recipientId = walkData['senderId'] == senderId
@@ -298,12 +351,11 @@ class WalkRequestService {
           : walkData['senderId'];
 
       if (recipientId != null) {
-        // This simulates a backend operation to trigger FCM to the recipient.
-        debugPrint(
-          "[WalkRequestService] FCM PLACEHOLDER: Message sent. Triggering notification for $recipientId...",
+        await _triggerNotification(
+          recipientId: recipientId,
+          type: 'chat_message',
+          data: {'walkId': walkId, 'text': text},
         );
-        // In a real scenario, you would look up the recipientId's fcmToken
-        // in the 'users' collection and send the push notification.
       }
 
     } catch (e) {
@@ -320,9 +372,7 @@ class WalkRequestService {
         .orderBy('timestamp', descending: false)
         .snapshots()
         .map((snapshot) {
-      return snapshot.docs
-          .map((doc) => doc.data())
-          .toList();
+      return snapshot.docs.map((doc) => doc.data()).toList();
     });
   }
 }
