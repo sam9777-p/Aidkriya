@@ -8,7 +8,8 @@ import 'backend/walk_request_service.dart';
 import 'components/duration_minute_picker.dart';
 import 'components/walk_detail_item.dart';
 import 'components/walker_profile_card.dart';
-import 'model/Walker.dart'; // For date/time formatting if needed
+import 'model/Walker.dart';
+import 'model/user_model.dart'; // Import UserModel
 
 class RequestWalkScreen extends StatefulWidget {
   final Walker walker; // Walker being requested
@@ -30,20 +31,48 @@ class _RequestWalkScreenState extends State<RequestWalkScreen> {
   Position? _currentPosition;
   bool _isSending = false;
 
+  // [NEW] State for current user profile data (needed for 'senderInfo')
+  UserModel? _currentUserProfile;
+
   // Walk details data
   DateTime _selectedDateTime =
-      DateTime.now(); // Store as DateTime for easier use
+  DateTime.now(); // Store as DateTime for easier use
   String selectedDuration = 'Select duration';
   int? _selectedDurationMinutes; // Store the raw minutes
   String selectedLocation = 'Your Location';
-  // String selectedPace = 'Leisurely'; // Not used in current send logic, keep if needed elsewhere
 
   @override
   void initState() {
     super.initState();
     _updateDisplayedDateTime();
     _getCurrentLocation();
-    // Initialize date/time more robustly if needed (e.g., from a calendar selection)
+    _fetchCurrentUserProfile(); // [NEW] Fetch profile data
+  }
+
+  // [NEW] Function to fetch the current user's profile
+  Future<void> _fetchCurrentUserProfile() async {
+    if (_currentUserId != null) {
+      try {
+        final doc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(_currentUserId!)
+            .get();
+        if (doc.exists) {
+          setState(() {
+            _currentUserProfile = UserModel.fromMap(doc.data()!);
+            debugPrint("[RequestWalkScreen] Current user profile loaded.");
+          });
+        }
+      } catch (e) {
+        debugPrint("[RequestWalkScreen] Error fetching user profile: $e");
+        // Fallback to minimal placeholder profile in case of fetch failure
+        _currentUserProfile = UserModel(
+            fullName: 'Wanderer User',
+            age: 0, city: '', bio: '', phone: '', interests: [],
+            rating: 5, imageUrl: '', walks: 0, earnings: 0
+        );
+      }
+    }
   }
 
   void _getCurrentLocation() async {
@@ -269,10 +298,11 @@ class _RequestWalkScreenState extends State<RequestWalkScreen> {
       width: double.infinity,
       height: 56,
       child: ElevatedButton(
+        // [MODIFIED] Check that _currentUserProfile is also available
         onPressed:
-            _isSending ||
-                _currentUserId ==
-                    null // Disable if sending or not logged in
+        _isSending ||
+            _currentUserId == null ||
+            _currentUserProfile == null // Check if profile data is loaded
             ? null
             : _onSendRequestPressed,
         style: ElevatedButton.styleFrom(
@@ -286,17 +316,17 @@ class _RequestWalkScreenState extends State<RequestWalkScreen> {
         ),
         child: _isSending
             ? const SizedBox(
-                width: 24,
-                height: 24,
-                child: CircularProgressIndicator(
-                  color: Colors.white,
-                  strokeWidth: 2.5,
-                ),
-              )
+          width: 24,
+          height: 24,
+          child: CircularProgressIndicator(
+            color: Colors.white,
+            strokeWidth: 2.5,
+          ),
+        )
             : const Text(
-                'Send Request',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-              ),
+          'Send Request',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+        ),
       ),
     );
   }
@@ -370,13 +400,20 @@ class _RequestWalkScreenState extends State<RequestWalkScreen> {
       _getCurrentLocation(); // Try getting location again
       return;
     }
+    // [NEW CHECK] Ensure profile data is available for notification payload
+    if (_currentUserProfile == null) {
+      _showErrorSnackBar(
+        'User profile data is still loading. Please wait a moment.',
+      );
+      debugPrint("[RequestWalkScreen] Aborted: User profile is null.");
+      _fetchCurrentUserProfile();
+      return;
+    }
+
 
     setState(() => _isSending = true); // Start loading indicator
 
     // --- Prepare Request Data ---
-    // You might want to fetch the SENDER's current profile info here too
-    // for denormalization if you added senderInfo to the service.
-
     final requestMap = {
       'senderId': _currentUserId!,
       'recipientId': widget.walker.id, // The ID of the walker profile shown
@@ -388,11 +425,15 @@ class _RequestWalkScreenState extends State<RequestWalkScreen> {
       'latitude': _currentPosition!.latitude,
       'longitude': _currentPosition!.longitude,
       'status':
-          'Pending', // Initial status set by service, but good practice here too
+      'Pending', // Initial status set by service, but good practice here too
       'notes': null, // Get from _notesController if you add one
       'createdAt': FieldValue.serverTimestamp(), // Set by service
       'updatedAt': FieldValue.serverTimestamp(), // Set by service
-      // Add 'senderInfo' map here if you fetched sender's name/image
+      // [FIX] Sender Info block now guaranteed to be present if validation passes
+      'senderInfo': {
+        'fullName': _currentUserProfile!.fullName,
+        'imageUrl': _currentUserProfile!.imageUrl,
+      },
     };
 
     debugPrint("[RequestWalkScreen] Prepared request data: $requestMap");
@@ -415,18 +456,17 @@ class _RequestWalkScreenState extends State<RequestWalkScreen> {
           );
           // Optionally navigate back or reset the form
           Navigator.pop(context); // Go back after successful request
-          // setState(() {
-          //   selectedDuration = 'Select duration'; // Reset duration
-          //   _selectedDurationMinutes = null;
-          // });
         }
       } else {
-        throw Exception("Service returned null ID."); // Handle null ID case
+        // This path is hit if the Firestore write succeeds but the server HTTP call fails,
+        // causing the exception to bubble up and be caught by the outer block.
+        throw Exception("Service returned null ID.");
       }
     } catch (error) {
-      debugPrint("[RequestWalkScreen] Failed to send request: $error");
+      // The error is a generic catch-all for any exception during the request process.
+      debugPrint("[RequestWalkScreen] Failed to send request with ERROR: $error");
       if (mounted) {
-        _showErrorSnackBar('Failed to send request: $error');
+        _showErrorSnackBar('Failed to send request: Check network connection and server URL.');
       }
     } finally {
       if (mounted) {
