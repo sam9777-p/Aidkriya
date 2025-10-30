@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 class UserModel {
@@ -14,6 +15,10 @@ class UserModel {
   final int earnings;
   String? activeWalkId;
 
+  // Fields for Pedometer
+  final int stepsToday;
+  final Timestamp? lastStepReset; // To track when stepsToday was last reset to 0
+
   UserModel({
     this.id,
     required this.fullName,
@@ -27,6 +32,10 @@ class UserModel {
     required this.walks,
     required this.earnings,
     this.activeWalkId,
+
+    // Add new fields to constructor
+    this.stepsToday = 0,
+    this.lastStepReset,
   });
 
   // ✅ Convert a Map (from Firebase or JSON) to UserProfile
@@ -44,6 +53,10 @@ class UserModel {
       walks: (map['walks'] ?? 0).toInt(),
       earnings: (map['earnings'] ?? 0).toInt(),
       activeWalkId: map['activeWalkId'],
+
+      // Read new fields from map
+      stepsToday: (map['stepsToday'] ?? 0).toInt(),
+      lastStepReset: map['lastStepReset'] as Timestamp?,
     );
   }
 
@@ -62,6 +75,10 @@ class UserModel {
       'walks': walks,
       'earnings': earnings,
       'activeWalkId': activeWalkId,
+
+      // Add new fields to map
+      'stepsToday': stepsToday,
+      'lastStepReset': lastStepReset,
     };
   }
 }

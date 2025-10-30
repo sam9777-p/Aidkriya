@@ -12,6 +12,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 
 import 'action_button.dart';
+import 'backend/pedometer_service.dart';
 import 'find_walker_screen.dart';
 import 'model/user_model.dart';
 import 'screens/wanderer_active_walk_screen.dart';
@@ -26,7 +27,8 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
   // Mock data - replace with data from _user if needed
-  int stepsToday = 8500;
+  //int stepsToday = 8500;
+  final PedometerService _pedometerService = PedometerService();
   int walksCompleted = 12;
   int socialImpact = 250;
 
@@ -47,6 +49,7 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     _subscribeToUserData();
     _updateFcmToken();
+    _pedometerService.init();
   }
 
   Future<void> _updateFcmToken() async {
@@ -183,6 +186,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _userSubscription?.cancel(); // Cancel the user stream
     _walkStatusSubscription?.cancel(); // Cancel the walk status stream
     locationService.stopTracking();
+    _pedometerService.dispose();
     super.dispose();
   }
 
@@ -359,17 +363,26 @@ class _HomeScreenState extends State<HomeScreen> {
     return Row(
       children: [
         Expanded(
-          child: StatsCard(
-            title: 'Steps Today',
-            value: stepsToday.toString(), // Replace with real data if available
-            onTap: () => _onStatsCardTap('Steps'),
+          // --- WRAP THE CARD IN A STREAMBUILDER ---
+          child: StreamBuilder<int>(
+            stream: _pedometerService.stepsTodayStream,
+            // Use the steps from the user model as the initial value
+            initialData: _user?.stepsToday ?? 0,
+            builder: (context, snapshot) {
+              final steps = snapshot.data ?? _user?.stepsToday ?? 0;
+              return StatsCard(
+                title: 'Steps Today',
+                value: steps.toString(), // Use data from stream/model
+                onTap: () => _onStatsCardTap('Steps'),
+              );
+            },
           ),
+          // --- END ---
         ),
         const SizedBox(width: 16),
         Expanded(
           child: StatsCard(
             title: 'Walks\nCompleted',
-            // Fetch this from _user?.walks or another source if needed
             value: (_user?.walks ?? walksCompleted).toString(),
             onTap: () => _onStatsCardTap('Walks'),
           ),
