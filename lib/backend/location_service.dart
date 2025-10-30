@@ -1,3 +1,5 @@
+// lib/backend/location_service.dart
+
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -6,15 +8,22 @@ import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 
+// Assuming imports for a pedometer package would go here, e.g.,
+// import 'package:pedometer/pedometer.dart';
+
 class LocationService with WidgetsBindingObserver {
   StreamSubscription<Position>? _positionStream;
+
+  // [NEW] Stream subscription for pedometer data
+  StreamSubscription<int>? _stepCountStream;
+
   final DatabaseReference dbRef = FirebaseDatabase.instance.ref("locations");
   final userId = FirebaseAuth.instance.currentUser?.uid ?? "guest";
 
   bool _isTracking = false;
   bool get isTracking => _isTracking;
 
-  /// Start tracking location - ONLY for Walkers
+  /// Start tracking location and steps - ONLY for Walkers
   Future<void> startTracking(BuildContext context) async {
     // 🔒 Prevent starting if already tracking
     if (_isTracking) {
@@ -37,11 +46,13 @@ class LocationService with WidgetsBindingObserver {
     }
 
     print(
-      'LocationService: User verified as Walker. Starting location tracking...',
+      'LocationService: User verified as Walker. Starting location and step tracking...',
     );
 
     WidgetsBinding.instance.addObserver(this);
 
+    // Ensure permissions are handled for location (and a real pedometer package 
+    // would require checking for ACTIVITY_RECOGNITION permission here)
     bool hasPermission = await _handleLocationPermission(context);
     if (!hasPermission) return;
 
@@ -50,6 +61,7 @@ class LocationService with WidgetsBindingObserver {
       'timestamp': DateTime.now().millisecondsSinceEpoch,
     });
 
+    // 1. Start Location Stream
     _positionStream =
         Geolocator.getPositionStream(
           locationSettings: const LocationSettings(
@@ -64,8 +76,19 @@ class LocationService with WidgetsBindingObserver {
           });
         });
 
+    // 2. [NEW] Start Step Count Stream
+    // NOTE: Replace this mock stream with your package's stream (e.g., Pedometer.stepCountStream)
+    _stepCountStream = Stream<int>.periodic(const Duration(seconds: 5), (count) => 1000 + count * 5).listen((stepCount) {
+      // Update the Firebase Realtime Database with the current step count
+      dbRef.child(userId).update({
+        'stepCount': stepCount,
+        'stepTimestamp': DateTime.now().millisecondsSinceEpoch,
+      });
+      print('LocationService: Step count updated: $stepCount');
+    });
+
     _isTracking = true;
-    print('LocationService: Location tracking started successfully');
+    print('LocationService: Location and step tracking started successfully');
   }
 
   Future<void> stopTracking() async {
@@ -74,11 +97,16 @@ class LocationService with WidgetsBindingObserver {
       return;
     }
 
-    print('LocationService: Stopping location tracking...');
+    print('LocationService: Stopping location and step tracking...');
 
     await dbRef.child(userId).update({'active': false});
     await _positionStream?.cancel();
     _positionStream = null;
+
+    // [NEW] Cancel Step Count Stream
+    await _stepCountStream?.cancel();
+    _stepCountStream = null;
+
     WidgetsBinding.instance.removeObserver(this);
 
     _isTracking = false;
@@ -113,8 +141,8 @@ class LocationService with WidgetsBindingObserver {
       final userRole = data['role'];
       final isWalker =
           userRole != null &&
-          (userRole.toString().toLowerCase() == 'walker' ||
-              userRole.toString() == 'Walker');
+              (userRole.toString().toLowerCase() == 'walker' ||
+                  userRole.toString() == 'Walker');
 
       print('LocationService: User role = $userRole, isWalker = $isWalker');
       return isWalker;
@@ -132,10 +160,14 @@ class LocationService with WidgetsBindingObserver {
         state == AppLifecycleState.detached) {
       dbRef.child(userId).update({'active': false});
       _positionStream?.pause();
+      // [NEW] Pause step stream
+      _stepCountStream?.pause();
       print('LocationService: App paused, tracking paused');
     } else if (state == AppLifecycleState.resumed) {
       dbRef.child(userId).update({'active': true});
       _positionStream?.resume();
+      // [NEW] Resume step stream
+      _stepCountStream?.resume();
       print('LocationService: App resumed, tracking resumed');
     }
   }
