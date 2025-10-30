@@ -26,8 +26,6 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
-  // Mock data - replace with data from _user if needed
-  //int stepsToday = 8500;
   final PedometerService _pedometerService = PedometerService();
   int walksCompleted = 12;
   int socialImpact = 250;

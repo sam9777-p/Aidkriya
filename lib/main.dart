@@ -1,3 +1,4 @@
+import 'package:aidkriya_walker/payment_screen.dart';
 import 'package:aidkriya_walker/sign_in_screen.dart';
 import 'package:aidkriya_walker/sign_up_screen.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -71,6 +72,22 @@ class MyApp extends StatelessWidget {
           '/signup': (context) => const SignUpScreen(),
           '/home': (context) => const HomeScreen(),
         },
+      onGenerateRoute: (settings) {
+        if (settings.name == '/payment') {
+          final args = settings.arguments as Map<String, dynamic>?;
+
+          final double amount = args?['amount'] ?? 0.0;
+          final String walkId = args?['walkId'] ?? '';
+
+          return MaterialPageRoute(
+            builder: (context) => PaymentScreen(
+              amount: amount,
+              walkId: walkId,
+            ),
+          );
+        }
+        return null;
+      },
       home: user != null ? const HomeScreen() : const SignUpScreen(),
       // home: IncomingRequestsScreen(),
     );

@@ -1,3 +1,5 @@
+
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:http/http.dart' as http;
@@ -12,12 +14,14 @@ double _calculateFare({
   required double agreedRatePerHour,
 }) {
   if (elapsedMinutes >= scheduledDurationMinutes) {
+    // Walk completed fully or auto-completed on schedule. Pay full agreed fare.
     return (scheduledDurationMinutes / 60.0) * agreedRatePerHour;
   }
   if (elapsedMinutes > 0 && elapsedMinutes < scheduledDurationMinutes) {
+    // Walk ended early (by Wanderer or a mid-point agreement). Pay pro-rata.
     return (elapsedMinutes / 60.0) * agreedRatePerHour;
   }
-  return 0.0;
+  return 0.0; // Walk ended instantly or prematurely without significant time passing.
 }
 
 class WalkRequestService {
@@ -63,8 +67,7 @@ class WalkRequestService {
   /// ------------------ SEND REQUEST ------------------
   Future<String?> sendRequest(Map<String, dynamic> requestData) async {
     try {
-      if (requestData['senderId'] == null ||
-          requestData['recipientId'] == null) {
+      if (requestData['senderId'] == null || requestData['recipientId'] == null) {
         throw ArgumentError("senderId and recipientId must be provided.");
       }
 
@@ -94,16 +97,14 @@ class WalkRequestService {
 
   /// ------------------ GET PENDING REQUESTS FOR WALKER ------------------
   Stream<List<WalkRequest>> getPendingRequestsForWalker(String walkerId) {
-    debugPrint(
-        "[WalkRequestService] Subscribing to pending requests for Walker: $walkerId");
+    debugPrint("[WalkRequestService] Subscribing to pending requests for Walker: $walkerId");
     return _requestsCollection
         .where('recipientId', isEqualTo: walkerId)
         .where('status', isEqualTo: 'Pending')
         .snapshots()
         .map((snapshot) {
       final requests = snapshot.docs
-          .map((doc) =>
-          WalkRequest.fromMap(doc.data() as Map<String, dynamic>, doc.id))
+          .map((doc) => WalkRequest.fromMap(doc.data() as Map<String, dynamic>, doc.id))
           .toList();
 
       requests.sort((a, b) {
@@ -121,8 +122,8 @@ class WalkRequestService {
   /// ------------------ ACCEPT REQUEST ------------------
   Future<bool> acceptRequest({
     required String walkId,
-    required String senderId,
-    required String recipientId,
+    required String senderId, // Wanderer ID
+    required String recipientId, // Walker ID
   }) async {
     debugPrint("[WalkRequestService] Attempting to accept request: $walkId");
     try {
@@ -130,9 +131,9 @@ class WalkRequestService {
 
       DocumentSnapshot requestDoc = await _requestsCollection.doc(walkId).get();
       if (!requestDoc.exists) throw Exception("Request $walkId not found.");
-      Map<String, dynamic> acceptedRequestData =
-      requestDoc.data() as Map<String, dynamic>;
+      Map<String, dynamic> acceptedRequestData = requestDoc.data() as Map<String, dynamic>;
 
+      // Delete other pending requests from this wanderer
       QuerySnapshot otherPendingRequests = await _requestsCollection
           .where('senderId', isEqualTo: senderId)
           .where('status', isEqualTo: 'Pending')
@@ -146,12 +147,17 @@ class WalkRequestService {
         'updatedAt': FieldValue.serverTimestamp(),
       });
 
+      // Ensure acceptedRequestData has sane defaults and metadata
       acceptedRequestData['status'] = 'Accepted';
       acceptedRequestData['updatedAt'] = FieldValue.serverTimestamp();
-      acceptedRequestData['messagesCount'] = 0;
+      acceptedRequestData['messagesCount'] = acceptedRequestData['messagesCount'] ?? 0;
+      if (acceptedRequestData['createdAt'] == null || !(acceptedRequestData['createdAt'] is Timestamp)) {
+        acceptedRequestData['createdAt'] = FieldValue.serverTimestamp();
+      }
 
       batch.set(_acceptedWalksCollection.doc(walkId), acceptedRequestData);
 
+      // Set activeWalkId and append to journeys for BOTH users
       batch.update(_usersCollection.doc(senderId), {
         'journeys': FieldValue.arrayUnion([walkId]),
         'activeWalkId': walkId,
@@ -194,17 +200,21 @@ class WalkRequestService {
 
       // ✅ Notify both users
       final walkDoc = await _acceptedWalksCollection.doc(walkId).get();
-      final data = walkDoc.data() as Map<String, dynamic>;
-      await _triggerNotification(
-        recipientId: data['senderId'],
-        type: 'walk_started',
-        data: {'walkId': walkId},
-      );
-      await _triggerNotification(
-        recipientId: data['recipientId'],
-        type: 'walk_started',
-        data: {'walkId': walkId},
-      );
+      final data = walkDoc.data() as Map<String, dynamic>? ?? {};
+      if (data['senderId'] != null) {
+        await _triggerNotification(
+          recipientId: data['senderId'],
+          type: 'walk_started',
+          data: {'walkId': walkId},
+        );
+      }
+      if (data['recipientId'] != null) {
+        await _triggerNotification(
+          recipientId: data['recipientId'],
+          type: 'walk_started',
+          data: {'walkId': walkId},
+        );
+      }
 
       debugPrint("[WalkRequestService] Walk $walkId started successfully");
       return true;
@@ -232,6 +242,7 @@ class WalkRequestService {
     String status;
     double amountDue;
 
+    // --- Determine Status + Fare ---
     if (isWalker && elapsedMinutes < scheduledDurationMinutes) {
       status = 'CancelledByWalker';
       amountDue = 0.0;
@@ -265,9 +276,11 @@ class WalkRequestService {
       'finalStats': finalStatsData,
     };
 
+    // ✅ Ensure both collections get updated
     batch.update(_requestsCollection.doc(walkId), endData);
     batch.update(_acceptedWalksCollection.doc(walkId), endData);
 
+    // --- Clear Active Walk for both users ---
     final walkDoc = await _acceptedWalksCollection.doc(walkId).get();
     final walkData = walkDoc.data() as Map<String, dynamic>? ?? {};
     final senderId = walkData['senderId'] as String?;
@@ -281,13 +294,17 @@ class WalkRequestService {
     }
 
     await batch.commit();
+    debugPrint("[WalkRequestService] Batch committed successfully for $walkId");
 
+    // ✅ Extra safeguard: Ensure finalStats exist in accepted_walks after commit
     await _firestore.collection('accepted_walks').doc(walkId).update({
       'finalStats': finalStatsData,
       'status': status,
     });
 
-    // ✅ Notify both users
+    debugPrint("[WalkRequestService] Confirmed finalStats & status persisted for accepted_walks/$walkId");
+
+    // ✅ Notify both users about final status
     if (senderId != null) {
       await _triggerNotification(
         recipientId: senderId,
@@ -303,7 +320,14 @@ class WalkRequestService {
       );
     }
 
-    return finalStatsData;
+    return {
+      'walkId': walkId,
+      'amountDue': double.parse(amountDue.toStringAsFixed(2)),
+      'status': status,
+      'finalDistanceKm': double.parse(finalDistanceKm.toStringAsFixed(1)),
+      'elapsedMinutes': elapsedMinutes.round(),
+      'finalStats': finalStatsData,
+    };
   }
 
   /// ------------------ DECLINE REQUEST ------------------
@@ -332,10 +356,7 @@ class WalkRequestService {
         'timestamp': FieldValue.serverTimestamp(),
       };
 
-      await _acceptedWalksCollection
-          .doc(walkId)
-          .collection('messages')
-          .add(messageData);
+      await _acceptedWalksCollection.doc(walkId).collection('messages').add(messageData);
 
       await _acceptedWalksCollection.doc(walkId).set(
         {
@@ -357,7 +378,6 @@ class WalkRequestService {
           data: {'walkId': walkId, 'text': text},
         );
       }
-
     } catch (e) {
       debugPrint("[WalkRequestService] Error sending message for $walkId: $e");
       throw Exception('Failed to send message.');
@@ -372,7 +392,7 @@ class WalkRequestService {
         .orderBy('timestamp', descending: false)
         .snapshots()
         .map((snapshot) {
-      return snapshot.docs.map((doc) => doc.data()).toList();
+      return snapshot.docs.map((doc) => doc.data() as Map<String, dynamic>).toList();
     });
   }
 }
