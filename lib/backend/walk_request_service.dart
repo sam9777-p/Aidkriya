@@ -33,11 +33,9 @@ class WalkRequestService {
       .collection('users');
 
   // 🔥 Replace this with your deployed backend URL
-  final String _serverUrl =
-      "https://aid-backend-1.onrender.com/api/sendNotification";
+  final String _serverUrl = "http://172.22.72.110:3000/api/sendNotification";
 
-  final String _scheduleUrl =
-      "https://aid-backend-1.onrender.com/api/schedule-walk";
+  final String _scheduleUrl = "http://172.22.72.110:3000/api/schedule-walk";
   // -------------------- Helper to trigger FCM via backend --------------------
   Future<void> _triggerNotification({
     required String recipientId,
@@ -67,8 +65,8 @@ class WalkRequestService {
     }
   }
 
-  /// ------------------ SEND REQUEST ------------------
-  /// [MODIFIED] This function now handles both instant and scheduled walks.
+  /// ------------------ FIXED SEND REQUEST ------------------
+  /// This properly handles both instant and scheduled walks
   Future<String?> sendRequest(Map<String, dynamic> requestData) async {
     try {
       if (requestData['senderId'] == null ||
@@ -76,20 +74,53 @@ class WalkRequestService {
         throw ArgumentError("senderId and recipientId must be provided.");
       }
 
-      // [MODIFIED] If it's an instant walk (no scheduledTimestamp),
-      // set its status to 'Pending' and timestamp to now.
+      // ✅ KEY FIX: Check if scheduledTimestamp exists AND is a future date
       if (requestData['scheduledTimestamp'] == null) {
+        // It's an INSTANT walk - no scheduled time provided
+        debugPrint(
+          "[WalkRequestService] Creating INSTANT walk (no scheduledTimestamp)",
+        );
         requestData['status'] = 'Pending';
-        // Treat "instant" walks as if they were scheduled for "now"
         requestData['scheduledTimestamp'] = FieldValue.serverTimestamp();
       } else {
-        // It's a scheduled walk, status should already be 'Scheduled'
-        // from schedule_walk_screen.dart
-        requestData['status'] = 'Scheduled';
+        // scheduledTimestamp exists - need to check if it's actually in the future
+        final timestamp = requestData['scheduledTimestamp'];
+
+        if (timestamp is Timestamp) {
+          final scheduledDate = timestamp.toDate();
+          final now = DateTime.now();
+          final twoMinutesFromNow = now.add(const Duration(minutes: 2));
+
+          if (scheduledDate.isAfter(twoMinutesFromNow)) {
+            // It's a SCHEDULED walk for the future
+            debugPrint(
+              "[WalkRequestService] Creating SCHEDULED walk for: $scheduledDate",
+            );
+            requestData['status'] = 'Scheduled';
+          } else {
+            // The timestamp is too close or in the past - treat as instant
+            debugPrint(
+              "[WalkRequestService] Scheduled time too close, treating as INSTANT walk",
+            );
+            requestData['status'] = 'Pending';
+            requestData['scheduledTimestamp'] = FieldValue.serverTimestamp();
+          }
+        } else {
+          // Invalid timestamp format - treat as instant
+          debugPrint(
+            "[WalkRequestService] WARNING: Invalid scheduledTimestamp format, treating as INSTANT",
+          );
+          requestData['status'] = 'Pending';
+          requestData['scheduledTimestamp'] = FieldValue.serverTimestamp();
+        }
       }
 
       requestData['createdAt'] = FieldValue.serverTimestamp();
       requestData['updatedAt'] = FieldValue.serverTimestamp();
+
+      debugPrint(
+        "[WalkRequestService] Final request status: ${requestData['status']}",
+      );
 
       DocumentReference docRef = await _requestsCollection.add(requestData);
       debugPrint(
@@ -99,7 +130,7 @@ class WalkRequestService {
       // ✅ Notify walker (recipient)
       await _triggerNotification(
         recipientId: requestData['recipientId'],
-        type: 'walk_request', // This notification type is fine for both
+        type: 'walk_request',
         data: {'walkId': docRef.id, 'senderId': requestData['senderId']},
       );
 
@@ -116,32 +147,32 @@ class WalkRequestService {
     );
     return _requestsCollection
         .where('recipientId', isEqualTo: walkerId)
-    // [MODIFIED] Query for both statuses
+        // [MODIFIED] Query for both statuses
         .where('status', whereIn: ['Pending', 'Scheduled'])
         .snapshots()
         .map((snapshot) {
-      final requests = snapshot.docs
-          .map(
-            (doc) => WalkRequest.fromMap(
-          doc.data() as Map<String, dynamic>,
-          doc.id,
-        ),
-      )
-          .toList();
+          final requests = snapshot.docs
+              .map(
+                (doc) => WalkRequest.fromMap(
+                  doc.data() as Map<String, dynamic>,
+                  doc.id,
+                ),
+              )
+              .toList();
 
-      requests.sort((a, b) {
-        final aTime = a.createdAt ?? DateTime(2000);
-        final bTime = b.createdAt ?? DateTime(2000);
-        return bTime.compareTo(aTime);
-      });
-      return requests;
-    })
+          requests.sort((a, b) {
+            final aTime = a.createdAt ?? DateTime(2000);
+            final bTime = b.createdAt ?? DateTime(2000);
+            return bTime.compareTo(aTime);
+          });
+          return requests;
+        })
         .handleError((error) {
-      debugPrint(
-        "[WalkRequestService] Error fetching pending requests: $error",
-      );
-      return <WalkRequest>[];
-    });
+          debugPrint(
+            "[WalkRequestService] Error fetching pending requests: $error",
+          );
+          return <WalkRequest>[];
+        });
   }
 
   /// ------------------ ACCEPT REQUEST (FIXED VERSION) ------------------
@@ -173,7 +204,7 @@ class WalkRequestService {
 
       debugPrint("[WalkRequestService] ✅ Request document found");
       Map<String, dynamic> acceptedRequestData =
-      requestDoc.data() as Map<String, dynamic>;
+          requestDoc.data() as Map<String, dynamic>;
       debugPrint(
         "[WalkRequestService] Request data: ${acceptedRequestData.toString().substring(0, 200)}...",
       );
@@ -321,21 +352,21 @@ class WalkRequestService {
         try {
           final response = await http
               .post(
-            Uri.parse(_scheduleUrl),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({
-              'walkId': walkId,
-              'senderId': senderId,
-              'recipientId': recipientId,
-              'scheduledTimestampISO': scheduledDateTime.toIso8601String(),
-            }),
-          )
+                Uri.parse(_scheduleUrl),
+                headers: {'Content-Type': 'application/json'},
+                body: jsonEncode({
+                  'walkId': walkId,
+                  'senderId': senderId,
+                  'recipientId': recipientId,
+                  'scheduledTimestampISO': scheduledDateTime.toIso8601String(),
+                }),
+              )
               .timeout(
-            const Duration(seconds: 10),
-            onTimeout: () {
-              throw Exception("Backend request timed out after 10 seconds");
-            },
-          );
+                const Duration(seconds: 10),
+                onTimeout: () {
+                  throw Exception("Backend request timed out after 10 seconds");
+                },
+              );
 
           debugPrint(
             "[WalkRequestService] Backend response status: ${response.statusCode}",
@@ -644,7 +675,7 @@ class WalkRequestService {
         .orderBy('timestamp', descending: false)
         .snapshots()
         .map((snapshot) {
-      return snapshot.docs.map((doc) => doc.data()).toList();
-    });
+          return snapshot.docs.map((doc) => doc.data()).toList();
+        });
   }
 }
