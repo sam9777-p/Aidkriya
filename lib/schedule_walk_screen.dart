@@ -6,11 +6,11 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
 
-import '../components/date_chip.dart';
-import '../components/option_chip.dart';
-import '../components/time_chip.dart';
-import '../components/walker_selection_card.dart';
-import 'Walker.dart';
+import 'components/date_chip.dart';
+import 'components/option_chip.dart';
+import 'components/time_chip.dart';
+import 'components/walker_selection_card.dart';
+import 'model/Walker.dart';
 
 class ScheduleWalkScreen extends StatefulWidget {
   final Walker? preselectedWalker; // Preselected Walker (optional)
@@ -124,9 +124,9 @@ class _ScheduleWalkScreenState extends State<ScheduleWalkScreen> {
     // Check if the selected date is today
     bool isToday =
         selectedDate != null &&
-            selectedDate!.year == now.year &&
-            selectedDate!.month == now.month &&
-            selectedDate!.day == now.day;
+        selectedDate!.year == now.year &&
+        selectedDate!.month == now.month &&
+        selectedDate!.day == now.day;
 
     for (int hour = startHour; hour < endHour; hour++) {
       for (int minute = 0; minute < 60; minute += 30) {
@@ -158,8 +158,8 @@ class _ScheduleWalkScreenState extends State<ScheduleWalkScreen> {
     // If the previously selected time is no longer valid for the new date, reset it
     if (selectedTime != null &&
         !availableTimes.any(
-              (t) =>
-          t.hour == selectedTime!.hour && t.minute == selectedTime!.minute,
+          (t) =>
+              t.hour == selectedTime!.hour && t.minute == selectedTime!.minute,
         )) {
       selectedTime = availableTimes.isNotEmpty ? availableTimes.first : null;
       debugPrint(
@@ -281,9 +281,9 @@ class _ScheduleWalkScreenState extends State<ScheduleWalkScreen> {
           final date = availableDates[index];
           final isSelected =
               selectedDate != null &&
-                  date.year == selectedDate!.year &&
-                  date.month == selectedDate!.month &&
-                  date.day == selectedDate!.day;
+              date.year == selectedDate!.year &&
+              date.month == selectedDate!.month &&
+              date.day == selectedDate!.day;
 
           return DateChip(
             date: date,
@@ -323,8 +323,8 @@ class _ScheduleWalkScreenState extends State<ScheduleWalkScreen> {
       children: availableTimes.map((time) {
         final isSelected =
             selectedTime != null &&
-                selectedTime!.hour == time.hour &&
-                selectedTime!.minute == time.minute;
+            selectedTime!.hour == time.hour &&
+            selectedTime!.minute == time.minute;
         return TimeChip(
           time: time,
           isSelected: isSelected,
@@ -352,39 +352,39 @@ class _ScheduleWalkScreenState extends State<ScheduleWalkScreen> {
         // Create scrollable list if many walkers, otherwise just list them
         (widget.availableWalkers.length > 3)
             ? SizedBox(
-          height: 120 * 3, // Adjust height based on card size
-          child: ListView(
-            children: widget.availableWalkers.map((walker) {
-              final isSelected = selectedWalker?.id == walker.id;
-              return WalkerSelectionCard(
-                walker: walker,
-                isSelected: isSelected,
-                onTap: () => setState(() {
-                  selectedWalker = walker;
-                  debugPrint(
-                    "[ScheduleWalkScreen] Walker selected: ${walker.name} (ID: ${walker.id})",
-                  );
-                }),
-              );
-            }).toList(),
-          ),
-        )
+                height: 120 * 3, // Adjust height based on card size
+                child: ListView(
+                  children: widget.availableWalkers.map((walker) {
+                    final isSelected = selectedWalker?.id == walker.id;
+                    return WalkerSelectionCard(
+                      walker: walker,
+                      isSelected: isSelected,
+                      onTap: () => setState(() {
+                        selectedWalker = walker;
+                        debugPrint(
+                          "[ScheduleWalkScreen] Walker selected: ${walker.name} (ID: ${walker.id})",
+                        );
+                      }),
+                    );
+                  }).toList(),
+                ),
+              )
             : Column(
-          // If few walkers, just display them directly
-          children: widget.availableWalkers.map((walker) {
-            final isSelected = selectedWalker?.id == walker.id;
-            return WalkerSelectionCard(
-              walker: walker,
-              isSelected: isSelected,
-              onTap: () => setState(() {
-                selectedWalker = walker;
-                debugPrint(
-                  "[ScheduleWalkScreen] Walker selected: ${walker.name} (ID: ${walker.id})",
-                );
-              }),
-            );
-          }).toList(),
-        ),
+                // If few walkers, just display them directly
+                children: widget.availableWalkers.map((walker) {
+                  final isSelected = selectedWalker?.id == walker.id;
+                  return WalkerSelectionCard(
+                    walker: walker,
+                    isSelected: isSelected,
+                    onTap: () => setState(() {
+                      selectedWalker = walker;
+                      debugPrint(
+                        "[ScheduleWalkScreen] Walker selected: ${walker.name} (ID: ${walker.id})",
+                      );
+                    }),
+                  );
+                }).toList(),
+              ),
       ],
     );
   }
@@ -407,8 +407,8 @@ class _ScheduleWalkScreenState extends State<ScheduleWalkScreen> {
           spacing: 12,
           runSpacing: 12, // Allow wrapping if needed
           children: ['30 min', '45 min', '60 min', '90 min', '120 min'].map((
-              duration,
-              ) {
+            duration,
+          ) {
             return OptionChip(
               label: duration,
               isSelected: selectedDuration == duration,
@@ -515,11 +515,11 @@ class _ScheduleWalkScreenState extends State<ScheduleWalkScreen> {
       child: ElevatedButton(
         // Disable button if loading, not logged in, location missing, or walker not selected
         onPressed:
-        (_isLoading ||
-            _currentUserId == null ||
-            _currentPosition == null ||
-            selectedWalker == null ||
-            _currentUserProfile == null)
+            (_isLoading ||
+                _currentUserId == null ||
+                _currentPosition == null ||
+                selectedWalker == null ||
+                _currentUserProfile == null)
             ? null
             : _onConfirmWalk,
         style: ElevatedButton.styleFrom(
@@ -537,22 +537,24 @@ class _ScheduleWalkScreenState extends State<ScheduleWalkScreen> {
         ),
         child: _isLoading
             ? const SizedBox(
-          height: 24,
-          width: 24,
-          child: CircularProgressIndicator(
-            color: Colors.white,
-            strokeWidth: 2.5,
-          ),
-        )
+                height: 24,
+                width: 24,
+                child: CircularProgressIndicator(
+                  color: Colors.white,
+                  strokeWidth: 2.5,
+                ),
+              )
             : const Text(
-          'Confirm & Send Request',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-        ),
+                'Confirm & Send Request',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+              ),
       ),
     );
   }
 
   /// ✅ Handles the confirmation and sending of the walk request using the new service.
+  /// ✅ CORRECTED _onConfirmWalk method for schedule_walk_screen.dart
+  /// Replace your existing _onConfirmWalk method with this one
   Future<void> _onConfirmWalk() async {
     // --- Validation ---
     if (_currentUserId == null ||
@@ -570,54 +572,56 @@ class _ScheduleWalkScreenState extends State<ScheduleWalkScreen> {
       return;
     }
 
-    setState(() => _isLoading = true); // Show loading indicator
+    setState(() => _isLoading = true);
 
-    // --- Prepare Request Data Map ---
-    final DateTime combinedDateTime = DateTime(
-      selectedDate!.year,
-      selectedDate!.month,
-      selectedDate!.day,
-      selectedTime!.hour,
-      selectedTime!.minute,
-    );
-    final formattedDate = DateFormat(
-      'MMMM d, yyyy',
-    ).format(combinedDateTime); // e.g., "October 28, 2025"
-    final formattedTime = DateFormat(
-      'h:mm a',
-    ).format(combinedDateTime); // e.g., "11:45 PM"
-
-    final requestData = {
-      'senderId': _currentUserId!,
-      'recipientId': selectedWalker!.id,
-      'senderInfo': {
-        // Denormalized sender info
-        'fullName': _currentUserProfile!.fullName,
-        'imageUrl': _currentUserProfile!.imageUrl,
-        // Add other sender fields if needed (e.g., rating, bio snippet)
-      },
-      'recipientInfo': {
-        // Denormalized recipient info (from selected Walker)
-        'fullName': selectedWalker!.name ?? 'Walker',
-        'imageUrl': selectedWalker!.imageUrl,
-        'rating': selectedWalker!.rating,
-      },
-      // 'walkerProfile': selectedWalker!.toMap(), // Keep if needed, but recipientInfo is better for lists
-      'date': formattedDate,
-      'time': formattedTime,
-      'duration': selectedDuration, // e.g., "45 min"
-      'latitude': _currentPosition!.latitude,
-      'longitude': _currentPosition!.longitude,
-      'status': 'Pending', // Initial status
-      'notes': null, // Add notes if you implement a notes field
-      'createdAt': FieldValue.serverTimestamp(),
-      'updatedAt': FieldValue.serverTimestamp(),
-    };
-
-    debugPrint("[ScheduleWalkScreen] Sending request data: $requestData");
-
-    // --- Call Service ---
     try {
+      // Create the DateTime object for the scheduled time
+      DateTime combinedDateTime = DateTime(
+        selectedDate!.year,
+        selectedDate!.month,
+        selectedDate!.day,
+        selectedTime!.hour,
+        selectedTime!.minute,
+      );
+
+      // Format date and time for DISPLAY purposes only
+      final formattedDate = DateFormat('MMMM d, yyyy').format(combinedDateTime);
+      final formattedTime = DateFormat('h:mm a').format(combinedDateTime);
+
+      debugPrint("[ScheduleWalkScreen] Scheduled DateTime: $combinedDateTime");
+      debugPrint("[ScheduleWalkScreen] Formatted Date: $formattedDate");
+      debugPrint("[ScheduleWalkScreen] Formatted Time: $formattedTime");
+      debugPrint(
+        "[ScheduleWalkScreen] ISO String: ${combinedDateTime.toIso8601String()}",
+      );
+
+      // ✅ CRITICAL FIX: Use Timestamp.fromDate() for scheduledTimestamp
+      final requestData = {
+        'senderId': _currentUserId!,
+        'recipientId': selectedWalker!.id,
+        'senderInfo': {
+          'fullName': _currentUserProfile!.fullName,
+          'imageUrl': _currentUserProfile!.imageUrl,
+        },
+        'walkerProfile': selectedWalker!.toMap(),
+        'date': formattedDate, // ✅ Display format
+        'time': formattedTime, // ✅ FIXED: Use actual formatted time
+        'duration': selectedDuration,
+        'latitude': _currentPosition!.latitude,
+        'longitude': _currentPosition!.longitude,
+        'status': 'Scheduled',
+        // ✅ CRITICAL: Store as Timestamp object, NOT string
+        'scheduledTimestamp': Timestamp.fromDate(combinedDateTime),
+        'notes': null,
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      };
+
+      debugPrint(
+        "[ScheduleWalkScreen] Sending request with Timestamp: ${Timestamp.fromDate(combinedDateTime)}",
+      );
+
+      // Call the service
       final String? walkId = await _walkService.sendRequest(requestData);
 
       if (walkId != null) {
@@ -631,7 +635,7 @@ class _ScheduleWalkScreenState extends State<ScheduleWalkScreen> {
               backgroundColor: Colors.green,
             ),
           );
-          Navigator.pop(context); // Go back after success
+          Navigator.pop(context);
         }
       } else {
         throw Exception("Service returned null ID.");
@@ -639,11 +643,11 @@ class _ScheduleWalkScreenState extends State<ScheduleWalkScreen> {
     } catch (e) {
       debugPrint("[ScheduleWalkScreen] Failed to send request: $e");
       if (mounted) {
-        _showErrorSnackBar('Failed to send request: $e');
+        _showErrorSnackBar('Failed to send request: ${e.toString()}');
       }
     } finally {
       if (mounted) {
-        setState(() => _isLoading = false); // Hide loader regardless of outcome
+        setState(() => _isLoading = false);
       }
     }
   }

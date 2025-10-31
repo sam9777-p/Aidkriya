@@ -1,15 +1,16 @@
 // lib/screens/chat_screen.dart
 
-import 'package:flutter/material.dart';
-import '../backend/walk_request_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart'; // [NEW]
-import 'package:aidkriya_walker/model/incoming_request_display.dart'; // [NEW]
+import 'package:flutter/material.dart';
+
+import '../backend/walk_request_service.dart';
 
 class ChatScreen extends StatefulWidget {
   final String walkId;
   final String partnerName; // The display name of the chat partner
-  final String partnerId; // The ID of the person the Walker is chatting with (Wanderer)
+  final String
+  partnerId; // The ID of the person the Walker is chatting with (Wanderer)
 
   // New constructor to take all required data
   const ChatScreen({
@@ -28,7 +29,8 @@ class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   // Get current user ID once and store it
-  final String currentUserId = FirebaseAuth.instance.currentUser?.uid ?? 'unknown';
+  final String currentUserId =
+      FirebaseAuth.instance.currentUser?.uid ?? 'unknown';
 
   void _sendMessage() {
     if (_messageController.text.trim().isNotEmpty) {
@@ -59,11 +61,11 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        backgroundColor: const Color(0xFFf5f5f5),
         title: Text('Chat with ${widget.partnerName}'), // Use partner name
       ),
       body: Column(
@@ -77,7 +79,9 @@ class _ChatScreenState extends State<ChatScreen> {
                 }
 
                 if (snapshot.hasError) {
-                  return Center(child: Text('Error loading messages: ${snapshot.error}'));
+                  return Center(
+                    child: Text('Error loading messages: ${snapshot.error}'),
+                  );
                 }
 
                 final messages = snapshot.data ?? [];
@@ -87,8 +91,9 @@ class _ChatScreenState extends State<ChatScreen> {
                 }
 
                 // Scroll to bottom after the messages are built
-                WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
-
+                WidgetsBinding.instance.addPostFrameCallback(
+                  (_) => _scrollToBottom(),
+                );
 
                 return ListView.builder(
                   controller: _scrollController,
@@ -99,16 +104,32 @@ class _ChatScreenState extends State<ChatScreen> {
                     final bool isMe = message['senderId'] == currentUserId;
 
                     return Align(
-                      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+                      alignment: isMe
+                          ? Alignment.centerRight
+                          : Alignment.centerLeft,
                       child: Container(
-                        margin: const EdgeInsets.symmetric(vertical: 5, horizontal: 8),
-                        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 15),
-                        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75), // Limit width
+                        margin: const EdgeInsets.symmetric(
+                          vertical: 5,
+                          horizontal: 8,
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                          vertical: 10,
+                          horizontal: 15,
+                        ),
+                        constraints: BoxConstraints(
+                          maxWidth: MediaQuery.of(context).size.width * 0.75,
+                        ), // Limit width
                         decoration: BoxDecoration(
-                          color: isMe ? const Color(0xFF6BCBA6) : Colors.grey[300],
+                          color: isMe
+                              ? const Color(0xFF6BCBA6)
+                              : Colors.grey[300],
                           borderRadius: BorderRadius.circular(16).copyWith(
-                            topRight: isMe ? const Radius.circular(4) : const Radius.circular(16),
-                            topLeft: isMe ? const Radius.circular(16) : const Radius.circular(4),
+                            topRight: isMe
+                                ? const Radius.circular(4)
+                                : const Radius.circular(16),
+                            topLeft: isMe
+                                ? const Radius.circular(16)
+                                : const Radius.circular(4),
                           ),
                         ),
                         child: Column(
@@ -116,20 +137,27 @@ class _ChatScreenState extends State<ChatScreen> {
                           children: [
                             Text(
                               message['text'] as String,
-                              style: TextStyle(color: isMe ? Colors.white : Colors.black),
+                              style: TextStyle(
+                                color: isMe ? Colors.white : Colors.black,
+                              ),
                             ),
-                            if(message['timestamp'] is Timestamp)
+                            if (message['timestamp'] is Timestamp)
                               Padding(
                                 padding: const EdgeInsets.only(top: 4.0),
                                 child: Text(
                                   // Format time as HH:MM
-                                  (message['timestamp'] as Timestamp).toDate().toString().substring(11, 16),
+                                  (message['timestamp'] as Timestamp)
+                                      .toDate()
+                                      .toString()
+                                      .substring(11, 16),
                                   style: TextStyle(
                                     fontSize: 10,
-                                    color: isMe ? Colors.white70 : Colors.black54,
+                                    color: isMe
+                                        ? Colors.white70
+                                        : Colors.black54,
                                   ),
                                 ),
-                              )
+                              ),
                           ],
                         ),
                       ),
@@ -150,8 +178,13 @@ class _ChatScreenState extends State<ChatScreen> {
                     controller: _messageController,
                     decoration: InputDecoration(
                       hintText: 'Type a message...',
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(25)),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(25),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 10,
+                      ),
                     ),
                     onSubmitted: (_) => _sendMessage(),
                   ),
