@@ -4,14 +4,17 @@ import 'package:aidkriya_walker/screens/walk_summary_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_database/firebase_database.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'dart:math' as math;
 
 import '../backend/walk_request_service.dart';
 import '../model/incoming_request_display.dart';
 import '../find_walker_screen.dart';
 import '../components/walker_avatar.dart';
-import '../screens/chat_screen.dart'; // Import ChatScreen
+import '../screens/chat_screen.dart';
+import '../components/request_map_widget.dart';
 
 // --- Timer Display Widget (_LiveTimeDisplay) ---
 class _LiveTimeDisplay extends StatefulWidget {
@@ -48,17 +51,17 @@ class _LiveTimeDisplayState extends State<_LiveTimeDisplay> {
   }
 
   @override
-  void dispose() {
-    _timer.cancel();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     return Text(
       _timeString,
       style: const TextStyle(color: Colors.green, fontWeight: FontWeight.w600),
     );
+  }
+
+  @override
+  void dispose() {
+    _timer.cancel();
+    super.dispose();
   }
 }
 // --- END TIMER WIDGET ---
@@ -77,16 +80,68 @@ class _WandererActiveWalkScreenState extends State<WandererActiveWalkScreen> {
   final WalkRequestService _walkService = WalkRequestService();
   bool _isNavigating = false; // Prevents double navigation attempts
 
+  // Live Walker Location State
+  StreamSubscription<DatabaseEvent>? _walkerLocationSubscription;
+  double? _walkerLiveLat;
+  double? _walkerLiveLon;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchWalkDataAndStartLocationStream();
+  }
+
   @override
   void dispose() {
-    // Make sure no async operations try to update state after disposal
+    _walkerLocationSubscription?.cancel();
     super.dispose();
   }
+
+  Future<void> _fetchWalkDataAndStartLocationStream() async {
+    try {
+      final walkDoc = await _firestore.collection('accepted_walks').doc(widget.walkId).get();
+      if (!walkDoc.exists) return;
+
+      final walkerId = walkDoc.data()?['recipientId'] as String?;
+      if (walkerId == null) {
+        debugPrint("[WandererActiveWalkScreen] Walker ID not found.");
+        return;
+      }
+
+      // Start listening to the Walker's location in the Realtime Database
+      final dbRef = FirebaseDatabase.instance.ref('locations/$walkerId');
+
+      _walkerLocationSubscription = dbRef.onValue.listen((event) {
+        if (event.snapshot.value != null && mounted) {
+          final data = Map<String, dynamic>.from(event.snapshot.value as Map);
+          final bool isActive = data['active'] ?? false;
+          final double? lat = (data['latitude'] as num?)?.toDouble();
+          final double? lon = (data['longitude'] as num?)?.toDouble();
+
+          // Check if location changed significantly before calling setState
+          const double threshold = 0.00005; // ~5 meters change required
+
+          final bool latChanged = (_walkerLiveLat == null || lat == null) || (math.Point(_walkerLiveLat as num, _walkerLiveLon as num).distanceTo(math.Point(lat, lon as num)) > threshold);
+
+          if (isActive && lat != null && lon != null && latChanged) {
+            setState(() {
+              _walkerLiveLat = lat;
+              _walkerLiveLon = lon;
+            });
+          }
+        }
+      }, onError: (error) {
+        debugPrint("[WandererActiveWalkScreen] RTDB Stream Error: $error");
+      });
+    } catch (e) {
+      debugPrint("[WandererActiveWalkScreen] Error setting up RTDB stream: $e");
+    }
+  }
+
 
   Future<void> _clearActiveWalkId() async {
     if (_currentUserId.isNotEmpty) {
       try {
-        // NOTE: This logic is redundant because endWalk already clears it, but kept as a safeguard.
         await _firestore
             .collection('users')
             .doc(_currentUserId)
@@ -95,11 +150,11 @@ class _WandererActiveWalkScreenState extends State<WandererActiveWalkScreen> {
             "[WandererActiveWalkScreen] Successfully Cleared activeWalkId for user $_currentUserId");
       } catch (e) {
         debugPrint("[WandererActiveWalkScreen] Error clearing activeWalkId: $e");
-        // Non-critical error, proceed with navigation if possible
       }
     }
   }
 
+  // Launch Emergency Call
   Future<void> _launchEmergencyCall() async {
     const emergencyNumber = 'tel:112';
 
@@ -109,41 +164,28 @@ class _WandererActiveWalkScreenState extends State<WandererActiveWalkScreen> {
       await launchUrl(phoneUri);
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Unable to open dialer. Please call 112 manually.')),
-          );
+        const SnackBar(content: Text('Unable to open dialer. Please call 112 manually.')),
+      );
     }
   }
 
-  // --- Navigation Logic ---
+  // --- Navigation Logic (unchanged) ---
   void _navigateToSummaryOrFindWalker({
-    required BuildContext context, // Pass context for navigation
+    required BuildContext context,
     required Map<String, dynamic> walkData,
     required String status,
-    required Map<String, dynamic> finalStats, // Final stats from backend
+    required Map<String, dynamic> finalStats,
   }) async {
-    // Prevent navigation if already navigating or widget is disposed
     if (!mounted || _isNavigating) {
-      debugPrint(
-          "[WandererActiveWalkScreen] Navigation prevented: mounted=$mounted, _isNavigating=$_isNavigating");
+      debugPrint("[WandererActiveWalkScreen] Navigation prevented: mounted=$mounted, _isNavigating=$_isNavigating");
       return;
     }
+    setState(() => _isNavigating = true);
 
-    setState(() => _isNavigating = true); // Set lock immediately
-    debugPrint("[WandererActiveWalkScreen] Preparing to navigate to Summary Screen...");
-
-    // Construct Display Data (robust selection of walker info)
-    Map<String, dynamic> recipientInfo = walkData['recipientInfo'] ?? {};
-    Map<String, dynamic> senderInfo = walkData['senderInfo'] ?? {}; // if present
-
-    // Determine walker info: prefer recipientInfo, fall back to senderInfo if roles are inverted
-    final Map<String, dynamic> walkerInfo =
-    recipientInfo.isNotEmpty ? recipientInfo : senderInfo;
-
-    final String walkerName = walkerInfo['fullName'] ?? 'Walker';
-    final String? walkerImageUrl = walkerInfo['imageUrl'];
-    final String? walkerBio = walkerInfo['bio'];
-
-    // Safety check for distance in case it was not present in walkData
+    final Map<String, dynamic> recipientInfo = walkData['recipientInfo'] ?? {};
+    final String walkerName = recipientInfo['fullName'] ?? 'Walker';
+    final String? walkerImageUrl = recipientInfo['imageUrl'];
+    final String? walkerBio = recipientInfo['bio'];
     final distance = (finalStats['finalDistanceKm'] as num?)?.toInt() ?? 0;
 
     final IncomingRequestDisplay displayData = IncomingRequestDisplay(
@@ -159,31 +201,23 @@ class _WandererActiveWalkScreenState extends State<WandererActiveWalkScreen> {
       latitude: (walkData['latitude'] as num?)?.toDouble() ?? 0.0,
       longitude: (walkData['longitude'] as num?)?.toDouble() ?? 0.0,
       status: status,
-      distance: distance, // Use the final distance from finalStats
+      distance: distance,
       notes: walkData['notes'],
     );
 
-    // Clearing active walk ID is handled by the backend during endWalk,
-    // but a final local check/clear doesn't hurt.
     await _clearActiveWalkId();
 
-    if (!mounted) return; // Re-check after await
+    if (!mounted) return;
 
     debugPrint("[WandererActiveWalkScreen] Navigation to WalkSummaryScreen commencing...");
-    try {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (context) => WalkSummaryScreen(
-            walkData: displayData,
-            finalStats: finalStats,
-          ),
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (context) => WalkSummaryScreen(
+          walkData: displayData,
+          finalStats: finalStats,
         ),
-      );
-      // Do not attempt to reset _isNavigating here — the screen is being replaced.
-    } catch (e) {
-      debugPrint("[WandererActiveWalkScreen] Navigation to summary failed: $e");
-      if (mounted) setState(() => _isNavigating = false);
-    }
+      ),
+    );
   }
 
   // --- Chat Navigation ---
@@ -205,282 +239,203 @@ class _WandererActiveWalkScreenState extends State<WandererActiveWalkScreen> {
 
   @override
   Widget build(BuildContext context) {
-    debugPrint(
-        "[WandererActiveWalkScreen] Build method called. Listening for walkId: ${widget.walkId}");
     return StreamBuilder<DocumentSnapshot>(
-      stream:
-      _firestore.collection('accepted_walks').doc(widget.walkId).snapshots(),
+      stream: _firestore.collection('accepted_walks').doc(widget.walkId).snapshots(),
       builder: (context, snapshot) {
-        // --- 1. Handle Loading/Error/Missing Data ---
+
         if (snapshot.connectionState == ConnectionState.waiting && !_isNavigating) {
-          debugPrint("[WandererActiveWalkScreen] Stream waiting...");
           return const Scaffold(body: Center(child: CircularProgressIndicator()));
         }
-        // If navigating, show loader to prevent brief screen flash
         if (_isNavigating) {
-          return const Scaffold(
-            body: Center(
-              child: CircularProgressIndicator(
-                semanticsLabel: "Navigating...",
-              ),
-            ),
-          );
+          return const Scaffold(body: Center(child: CircularProgressIndicator( semanticsLabel: "Navigating...",)));
         }
 
-        if (snapshot.hasError) {
-          debugPrint(
-              "[WandererActiveWalkScreen] Stream Error: ${snapshot.error}. Scheduling navigation to FindWalker.");
-          if (!_isNavigating) {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              _clearActiveWalkId();
-              if (mounted) {
-                Navigator.of(context).pushReplacement(
-                    MaterialPageRoute(builder: (context) => const FindWalkerScreen()));
-              }
-            });
-          }
-          return const Scaffold(body: Center(child: Text("Error loading walk data.")));
+        if (!snapshot.hasData || !snapshot.data!.exists || snapshot.hasError) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _clearActiveWalkId();
+            if(mounted) {
+              Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (context) => const FindWalkerScreen()));
+            }
+          });
+          return const Scaffold(body: Center(child: Text("Walk session not found.")));
         }
 
-        if (!snapshot.hasData || !snapshot.data!.exists) {
-          debugPrint("[WandererActiveWalkScreen] Document does not exist. Scheduling navigation to FindWalker.");
-          if (!_isNavigating) {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              _clearActiveWalkId();
-              if (mounted) {
-                Navigator.of(context).pushReplacement(
-                    MaterialPageRoute(builder: (context) => const FindWalkerScreen()));
-              }
-            });
-          }
-          return const Scaffold(body: Center(child: Text("Walk session ended or not found.")));
-        }
-
-        // --- 2. Process Valid Data (Robust) ---
+        // --- Data Processing ---
         final walkData = snapshot.data!.data() as Map<String, dynamic>;
         final currentStatus = walkData['status'] as String? ?? 'Accepted';
         final finalStats = walkData['finalStats'] as Map<String, dynamic>?;
-        final summaryAvailable = walkData['summaryAvailable'] as bool? ?? false;
-        final List<dynamic> summaryShownToRaw = walkData['summaryShownTo'] as List<dynamic>? ?? [];
-        final Set<String> summaryShownTo = summaryShownToRaw.map((e) => e.toString()).toSet();
 
-        debugPrint(
-            "[WandererActiveWalkScreen] Received data update at ${DateTime.now()}. Status: $currentStatus, FinalStats present: ${finalStats != null}, summaryAvailable: $summaryAvailable, summaryShownTo: $summaryShownTo");
-
-        // --- 3. Decide whether to show the summary ---
-        final bool isFinalStatus =
-        (currentStatus == 'Completed' || currentStatus.contains('Cancelled'));
-        final bool canShowSummary =
-            (finalStats != null) && (isFinalStatus || summaryAvailable);
-
-        // If final status but finalStats missing, wait
-        if (isFinalStatus && finalStats == null) {
-          debugPrint("[WandererActiveWalkScreen] Final status ($currentStatus) detected BUT finalStats are MISSING. Waiting for next update...");
-          return const Scaffold(body: Center(child: Text("Finalizing Walk Data... Please Wait.")));
-        }
-
-        if (canShowSummary) {
-          debugPrint("[WandererActiveWalkScreen] Summary ready (status=$currentStatus, summaryAvailable=$summaryAvailable).");
-
-          final bool alreadyShown = summaryShownTo.contains(_currentUserId);
-          debugPrint("[WandererActiveWalkScreen] alreadyShown=$alreadyShown, _isNavigating=$_isNavigating");
-
-          // If not already shown for this user, mark and navigate
-          if (!_isNavigating && !alreadyShown) {
-            setState(() => _isNavigating = true);
-
-            WidgetsBinding.instance.addPostFrameCallback((_) async {
-              // Mark doc as shown for this user to avoid duplicate navigations
-              try {
-                debugPrint("[WandererActiveWalkScreen] Marking summaryShownTo for user $_currentUserId on walk ${widget.walkId}");
-                await _firestore.collection('accepted_walks').doc(widget.walkId).update({
-                  'summaryShownTo': FieldValue.arrayUnion([_currentUserId]),
-                });
-              } catch (e) {
-                debugPrint("[WandererActiveWalkScreen] Failed to update summaryShownTo: $e");
-                // continue to navigate regardless of marking result
-              }
-
-              if (!mounted) {
-                debugPrint("[WandererActiveWalkScreen] Widget unmounted before navigation. Aborting navigation.");
-                if (mounted) setState(() => _isNavigating = false);
-                return;
-              }
-
-              try {
-                _navigateToSummaryOrFindWalker(
-                  context: context,
-                  walkData: walkData,
-                  status: currentStatus,
-                  finalStats: finalStats ?? {},
-                );
-              } catch (e) {
-                debugPrint("[WandererActiveWalkScreen] Navigation error: $e");
-                if (mounted) setState(() => _isNavigating = false);
-              }
-            });
-
-            // Show loader while navigating
-            return const Scaffold(body: Center(child: CircularProgressIndicator( semanticsLabel: "Navigating to Summary...",)));
-          }
-
-          // If already shown, attempt a final fallback navigation (defensive) only if not navigating
-          if (alreadyShown && !_isNavigating) {
-            debugPrint("[WandererActiveWalkScreen] summaryShownTo indicates already shown, attempting fallback navigation.");
+        // --- Summary Navigation Check ---
+        if ((currentStatus == 'Completed' || currentStatus.contains('Cancelled')) && finalStats != null) {
+          if (!_isNavigating) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (!_isNavigating && mounted) {
-                setState(() => _isNavigating = true);
-                try {
-                  _navigateToSummaryOrFindWalker(
-                    context: context,
-                    walkData: walkData,
-                    status: currentStatus,
-                    finalStats: finalStats ?? {},
-                  );
-                } catch (e) {
-                  debugPrint("[WandererActiveWalkScreen] Fallback navigation error: $e");
-                  if (mounted) setState(() => _isNavigating = false);
-                }
-              }
+              _navigateToSummaryOrFindWalker(
+                context: context,
+                walkData: walkData,
+                status: currentStatus,
+                finalStats: finalStats,
+              );
             });
-
-            return const Scaffold(body: Center(child: CircularProgressIndicator( semanticsLabel: "Navigating to Summary...",)));
           }
-
-          // Otherwise, wait while navigation is ongoing
-          return const Scaffold(body: Center(child: CircularProgressIndicator( semanticsLabel: "Waiting...",)));
+          return const Scaffold(body: Center(child: CircularProgressIndicator( semanticsLabel: "Navigating to Summary...",)));
+        }
+        if ((currentStatus == 'Completed' || currentStatus.contains('Cancelled')) && finalStats == null) {
+          return const Scaffold(body: Center(child: Text("Finalizing Walk Data...")));
         }
 
-        // --- 4. Build Active Walk UI (Status is 'Accepted' or 'Started') ---
+        // --- Build Active UI ---
         final isWalkStarted = currentStatus == 'Started';
+        final walkLatitude = (walkData['latitude'] as num?)?.toDouble() ?? 0.0;
+        final walkLongitude = (walkData['longitude'] as num?)?.toDouble() ?? 0.0;
+
         final walkerName = walkData['recipientInfo']?['fullName'] ?? 'Walker';
         final walkerImageUrl = walkData['recipientInfo']?['imageUrl'];
         final DateTime? actualStartTime = (walkData['actualStartTime'] as Timestamp?)?.toDate();
 
+        final isLocationLive = _walkerLiveLat != null;
+
         return Scaffold(
+          body: Stack(
+            children: [
+              // 1. Map View (Live Walker Tracking)
+              Positioned.fill(
+                child: RequestMapWidget(
+                  requestLatitude: walkLatitude,
+                  requestLongitude: walkLongitude,
+                  // Pass live coordinates from RTDB stream
+                  walkerLatitude: _walkerLiveLat,
+                  walkerLongitude: _walkerLiveLon,
+                  senderName: walkerName,
+                ),
+              ),
+
+              // 2. Overlay Content (Status, Info, Buttons)
+              SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 10.0, left: 16.0, right: 16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Status Bar Card
+                      Card(
+                        elevation: 4,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        child: Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Row(
+                            children: [
+                              WalkerAvatar(imageUrl: walkerImageUrl, size: 50),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                        "Walker: $walkerName",
+                                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                                        overflow: TextOverflow.ellipsis
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                        "Scheduled: ${walkData['time'] ?? ''} for ${walkData['duration'] ?? ''}",
+                                        style: TextStyle(fontSize: 13, color: Colors.grey[600])
+                                    ),
+                                    if (isWalkStarted && actualStartTime != null) ...[
+                                      const SizedBox(height: 4),
+                                      Row(
+                                        children: [
+                                          const Icon(Icons.timer, size: 18, color: Colors.green),
+                                          const SizedBox(width: 4),
+                                          const Text("Elapsed: ", style: TextStyle(color: Colors.green)),
+                                          _LiveTimeDisplay(startTime: actualStartTime),
+                                        ],
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 16),
+                      _buildStatusIndicator(currentStatus, isLocationLive),
+
+                      const Spacer(),
+
+                      // Action Buttons (White Card at bottom)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 0.0, vertical: 10.0),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 8)],
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceAround,
+                          children: [
+                            // [REMOVED] Call Button
+                            TextButton.icon(
+                              onPressed: () => _onMessageTapped(walkData),
+                              icon: const Icon(Icons.chat_bubble_outline, color: Colors.blueAccent),
+                              label: const Text("Chat", style: TextStyle(color: Colors.blueAccent)),
+                            ),
+                            // Spacer to separate buttons, ensuring Cancel is clearly visible
+                            const SizedBox(width: 20),
+                            TextButton.icon(
+                              onPressed: _isNavigating ? null : () => _showCancelConfirmation(context, walkData),
+                              icon: const Icon(Icons.cancel, color: Colors.red),
+                              label: const Text("Cancel", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+                            ),
+                            const SizedBox(width: 20),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
           appBar: AppBar(
-            title: const Text("My Active Walk"),
+            title: const Text("Live Walk Status"),
             backgroundColor: isWalkStarted ? Colors.green : Colors.orange,
             foregroundColor: Colors.white,
             automaticallyImplyLeading: false,
           ),
-          body: Padding(
-            padding: const EdgeInsets.all(20.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // Display Walker Info
-                Card(
-                  elevation: 4,
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Row(
-                      children: [
-                        WalkerAvatar(imageUrl: walkerImageUrl, size: 50),
-                        const SizedBox(width: 16),
-                        Expanded( // Use Expanded to prevent overflow
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text("Walker: $walkerName", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis),
-                              const SizedBox(height: 4),
-                              Text("Scheduled: ${walkData['time'] ?? ''} for ${walkData['duration'] ?? ''}", overflow: TextOverflow.ellipsis),
-                              if (isWalkStarted && actualStartTime != null) ...[
-                                const SizedBox(height: 4),
-                                Row(
-                                  children: [
-                                    const Icon(Icons.timer, size: 18, color: Colors.green),
-                                    const SizedBox(width: 4),
-                                    const Text("Elapsed: ", style: TextStyle(color: Colors.green)),
-                                    _LiveTimeDisplay(startTime: actualStartTime), // Use the isolated timer widget
-                                  ],
-                                ),
-                              ] else if (isWalkStarted) ...[
-                                const Text("Walk started", style: TextStyle(color: Colors.green, fontWeight: FontWeight.w600)),
-                              ],
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 20),
-                _buildStatusIndicator(currentStatus),
-                const SizedBox(height: 30),
-                Expanded(
-                  child: Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 5)],
-                    ),
-                    child: Center(
-                      child: Text(
-                        isWalkStarted ?
-                        "Walk in progress! Stay safe." :
-                        "Walker confirmed. Preparing to meet at the location.",
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(fontSize: 16, height: 1.5),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                ElevatedButton.icon(
-                  onPressed: () => _onMessageTapped(walkData),
-                  icon: const Icon(Icons.message),
-                  label: const Text("Chat with Walker"),
-                  style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blueAccent,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 15)
-                  ),
-                ),
-                const SizedBox(height: 10),
-                TextButton(
-                  // Disable cancel if already navigating
-                  onPressed: _isNavigating ? null : () => _showCancelConfirmation(context, walkData),
-                  child: const Text(
-                      "Cancel Walk",
-                      style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)
-                  ),
-                ),
-              ],
-            ),
-          ),
           floatingActionButton: FloatingActionButton.extended(
-              heroTag: 'SOS_Wanderer',
-              onPressed: _launchEmergencyCall,
-              icon: const Icon(Icons.sos, color: Colors.white),
-              label: const Text('SOS', style: TextStyle(color: Colors.white)),
-              backgroundColor: Colors.red,
-              ),
+            heroTag: 'SOS_Wanderer',
+            onPressed: _launchEmergencyCall,
+            icon: const Icon(Icons.sos, color: Colors.white),
+            label: const Text('SOS', style: TextStyle(color: Colors.white)),
+            backgroundColor: Colors.red,
+          ),
         );
       },
     );
   }
 
-  Widget _buildStatusIndicator(String status) {
-    Color color; String message; IconData icon;
-    switch (status) {
-      case 'Accepted':
-        color = Colors.orange;
-        message = "Walker is confirmed.";
-        icon = Icons.check_circle_outline;
-        break;
-      case 'Started':
-        color = Colors.green;
-        message = "Walk is LIVE! Timer running.";
-        icon = Icons.directions_walk;
-        break;
-      default:
-        color = Colors.blueGrey;
-        message = "Status: $status";
-        icon = Icons.info_outline;
+  Widget _buildStatusIndicator(String status, bool isLocationLive) {
+    Color color;
+    String message;
+    IconData icon;
+
+    if (status == 'Started') {
+      color = Colors.green;
+      message = isLocationLive ? "Walk is LIVE! Tracking location." : "Walk Started. Awaiting location signal.";
+      icon = Icons.directions_run;
+    } else if (status == 'Accepted') {
+      color = Colors.orange;
+      message = isLocationLive ? "Walker is En Route." : "Walker confirmed. Awaiting movement.";
+      icon = Icons.check_circle_outline;
+    } else {
+      color = Colors.blueGrey;
+      message = "Status: $status";
+      icon = Icons.info_outline;
     }
+
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
