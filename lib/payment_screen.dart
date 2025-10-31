@@ -4,11 +4,22 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:razorpay_flutter/razorpay_flutter.dart';
 
+import 'model/incoming_request_display.dart';
+
+
 class PaymentScreen extends StatefulWidget {
   final double amount;
   final String walkId;
+  final IncomingRequestDisplay walkData;
+  final Map<String, dynamic> finalStats;
 
-  const PaymentScreen({super.key, required this.amount, required this.walkId});
+  const PaymentScreen({
+    super.key,
+    required this.amount,
+    required this.walkId,
+    required this.walkData,
+    required this.finalStats,
+  });
 
   @override
   State<PaymentScreen> createState() => _PaymentScreenState();
@@ -56,7 +67,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
     if (_isPaymentHandled) return;
     _isPaymentHandled = true;
 
-    final docRef = FirebaseFirestore.instance.collection('accepted_walks').doc(widget.walkId);
+    final docRef =
+    FirebaseFirestore.instance.collection('accepted_walks').doc(widget.walkId);
+
     await docRef.update({
       'paymentStatus': 'Paid',
       'status': 'Completed',
@@ -66,7 +79,12 @@ class _PaymentScreenState extends State<PaymentScreen> {
     if (mounted) {
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (_) => WalkSummaryScreen(walkId: widget.walkId)),
+        MaterialPageRoute(
+          builder: (context) => WalkSummaryScreen(
+            walkData: widget.walkData,
+            finalStats: widget.finalStats,
+          ),
+        ),
       );
     }
   }
@@ -75,7 +93,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
     if (_isPaymentHandled) return;
     _isPaymentHandled = true;
 
-    await FirebaseFirestore.instance.collection('accepted_walks').doc(widget.walkId).update({
+    await FirebaseFirestore.instance
+        .collection('accepted_walks')
+        .doc(widget.walkId)
+        .update({
       'paymentStatus': 'Cancelled',
     });
 
@@ -87,7 +108,11 @@ class _PaymentScreenState extends State<PaymentScreen> {
     _isPaymentHandled = true;
 
     _timer?.cancel();
-    await FirebaseFirestore.instance.collection('accepted_walks').doc(widget.walkId).update({
+
+    await FirebaseFirestore.instance
+        .collection('accepted_walks')
+        .doc(widget.walkId)
+        .update({
       'paymentStatus': 'Cancelled',
     });
 
@@ -124,11 +149,17 @@ class _PaymentScreenState extends State<PaymentScreen> {
             const SizedBox(height: 10),
             Text(
               '$mins:${secs.toString().padLeft(2, '0')}',
-              style: const TextStyle(fontSize: 40, fontWeight: FontWeight.bold, color: Colors.red),
+              style: const TextStyle(
+                fontSize: 40,
+                fontWeight: FontWeight.bold,
+                color: Colors.red,
+              ),
             ),
             const SizedBox(height: 30),
-            Text('Amount: ₹${widget.amount.toStringAsFixed(2)}',
-                style: const TextStyle(fontSize: 20)),
+            Text(
+              'Amount: ₹${widget.amount.toStringAsFixed(2)}',
+              style: const TextStyle(fontSize: 20),
+            ),
           ],
         ),
       ),

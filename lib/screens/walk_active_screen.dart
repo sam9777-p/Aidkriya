@@ -122,7 +122,10 @@ class _WalkActiveScreenState extends State<WalkActiveScreen> {
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (context) => WalkSummaryScreen(walkId: widget.walkData.walkId),
+            builder: (context) => WalkSummaryScreen(
+              walkData: widget.walkData,
+              finalStats: finalStats,
+            ),
           ),
         );
       }
@@ -420,7 +423,10 @@ class _WalkActiveScreenState extends State<WalkActiveScreen> {
                 Navigator.pushReplacement(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => WalkSummaryScreen(walkId: widget.walkData.walkId),
+                    builder: (context) => WalkSummaryScreen(
+                      walkData: widget.walkData,
+                      finalStats: finalStats,
+                    ),
                   ),
                 );
               });

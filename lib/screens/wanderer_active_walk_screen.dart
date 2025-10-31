@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
+import '../model/incoming_request_display.dart';
 import 'walk_summary_screen.dart';
 import 'chat_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -40,7 +41,23 @@ class _WandererActiveWalkScreenState extends State<WandererActiveWalkScreen> {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (_) => WalkSummaryScreen(walkId: widget.walkId),
+          builder: (_) => WalkSummaryScreen(
+            walkData: IncomingRequestDisplay(
+              walkId: widget.walkId,
+              senderId: data['senderId'] ?? '',
+              recipientId: data['recipientId'] ?? '',
+              senderName: data['senderInfo']?['fullName'] ?? '',
+              latitude: data['location']?['lat'] ?? 0.0,
+              longitude: data['location']?['lon'] ?? 0.0,
+              distance: (data['distance'] ?? 0.0).toDouble(),
+              duration: data['duration']?.toString() ?? '0 min',
+              status: status,
+              date: '',
+              time: '',
+              notes: '',
+            ),
+            finalStats: finalStats,
+          ),
         ),
       );
     }
