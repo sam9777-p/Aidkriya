@@ -10,6 +10,7 @@ import '../backend/walk_request_service.dart';
 import '../model/incoming_request_display.dart';
 import 'chat_screen.dart';
 import 'walk_summary_screen.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class WalkActiveScreen extends StatefulWidget {
   final IncomingRequestDisplay walkData;
@@ -146,6 +147,20 @@ class _WalkActiveScreenState extends State<WalkActiveScreen> {
     }
   }
 
+  Future<void> _launchEmergencyCall() async {
+    const emergencyNumber = 'tel:112';
+
+    final Uri phoneUri = Uri.parse(emergencyNumber);
+
+    if (await canLaunchUrl(phoneUri)) {
+      await launchUrl(phoneUri);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Unable to open dialer. Please call 112 manually.')),
+          );
+    }
+    }
+
   // --- Start Walk Implementation ---
   Future<void> _onStartWalkPressed() async {
     if (_currentStatus == 'Starting...' || _currentStatus == 'Started') return;
@@ -275,7 +290,7 @@ class _WalkActiveScreenState extends State<WalkActiveScreen> {
         children: [
           FloatingActionButton.extended(
             heroTag: 'SOS',
-            onPressed: () => print('SOS Pressed'),
+            onPressed: () => _launchEmergencyCall(),
             icon: const Icon(Icons.sos, color: Colors.white),
             label: const Text('SOS', style: TextStyle(color: Colors.white)),
             backgroundColor: Colors.red,

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../backend/walk_request_service.dart';
 import '../model/incoming_request_display.dart';
@@ -96,6 +97,20 @@ class _WandererActiveWalkScreenState extends State<WandererActiveWalkScreen> {
         debugPrint("[WandererActiveWalkScreen] Error clearing activeWalkId: $e");
         // Non-critical error, proceed with navigation if possible
       }
+    }
+  }
+
+  Future<void> _launchEmergencyCall() async {
+    const emergencyNumber = 'tel:112';
+
+    final Uri phoneUri = Uri.parse(emergencyNumber);
+
+    if (await canLaunchUrl(phoneUri)) {
+      await launchUrl(phoneUri);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Unable to open dialer. Please call 112 manually.')),
+          );
     }
   }
 
@@ -436,6 +451,13 @@ class _WandererActiveWalkScreenState extends State<WandererActiveWalkScreen> {
               ],
             ),
           ),
+          floatingActionButton: FloatingActionButton.extended(
+              heroTag: 'SOS_Wanderer',
+              onPressed: _launchEmergencyCall,
+              icon: const Icon(Icons.sos, color: Colors.white),
+              label: const Text('SOS', style: TextStyle(color: Colors.white)),
+              backgroundColor: Colors.red,
+              ),
         );
       },
     );

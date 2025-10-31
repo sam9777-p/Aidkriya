@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart'; // [NEW] Import Firestore
 import 'package:flutter/material.dart';
 
 import '../home_screen.dart';
+import '../payment_screen.dart';
 
 class WalkSummaryScreen extends StatefulWidget {
   // [CHANGE] Changed to StatefulWidget
@@ -182,10 +183,14 @@ class _WalkSummaryScreenState extends State<WalkSummaryScreen> {
   Widget _buildPayNowButton(BuildContext context) {
     return ElevatedButton.icon(
       onPressed: () {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Payment system activated for Wanderer.'),
-          ),
+        Navigator.push(
+            context,
+            MaterialPageRoute(
+                builder: (context) => PaymentScreen(
+                    amount: widget.finalStats['amountDue'] ?? 0.0,
+                    walkId: widget.walkData.walkId,
+                )
+            )
         );
       },
       style: ElevatedButton.styleFrom(
