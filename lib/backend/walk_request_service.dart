@@ -510,12 +510,16 @@ class WalkRequestService {
       'amountDue': double.parse(amountDue.toStringAsFixed(2)),
     };
 
+    // include a summaryAvailable flag so clients know summary is ready
     final endData = {
       'status': status,
       'endTime': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
       'completedBy': userIdEnding,
       'finalStats': finalStatsData,
+      'summaryAvailable': true, // <-- NEW
+      // optionally track who has seen it:
+      'summaryShownTo': FieldValue.arrayUnion([]), // start empty
     };
 
     batch.update(_requestsCollection.doc(walkId), endData);
@@ -539,17 +543,25 @@ class WalkRequestService {
 
     await batch.commit();
 
+    // Ensure the accepted_walks document has finalStats + summaryAvailable set (redundant safe write)
     await _firestore.collection('accepted_walks').doc(walkId).update({
       'finalStats': finalStatsData,
       'status': status,
+      'summaryAvailable': true,
     });
 
-    // ✅ Notify both users
+    // ✅ Notify both users: existing 'walk_$status' AND explicit 'walk_summary_available' with finalStats
     if (senderId != null) {
       await _triggerNotification(
         recipientId: senderId,
         type: 'walk_$status',
         data: {'walkId': walkId, 'status': status},
+      );
+
+      await _triggerNotification(
+        recipientId: senderId,
+        type: 'walk_summary_available',
+        data: {'walkId': walkId, 'finalStats': finalStatsData, 'status': status},
       );
     }
     if (recipientId != null) {
@@ -558,10 +570,17 @@ class WalkRequestService {
         type: 'walk_$status',
         data: {'walkId': walkId, 'status': status},
       );
+
+      await _triggerNotification(
+        recipientId: recipientId,
+        type: 'walk_summary_available',
+        data: {'walkId': walkId, 'finalStats': finalStatsData, 'status': status},
+      );
     }
 
     return finalStatsData;
   }
+
 
   /// ------------------ DECLINE REQUEST ------------------
   Future<bool> declineRequest(String walkId) async {
