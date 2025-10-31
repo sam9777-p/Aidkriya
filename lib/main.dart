@@ -9,7 +9,6 @@ import 'package:flutter/material.dart';
 
 import 'firebase_options.dart';
 import 'home_screen.dart';
-import 'model/incoming_request_display.dart';
 
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
@@ -77,28 +76,20 @@ class MyApp extends StatelessWidget {
         if (settings.name == '/payment') {
           final args = settings.arguments as Map<String, dynamic>?;
 
-          final double amount = (args?['amount'] ?? 0.0).toDouble();
+          final double amount = args?['amount'] ?? 0.0;
           final String walkId = args?['walkId'] ?? '';
-
-          // Accept the actual IncomingRequestDisplay object, not a Map
-          final incomingRequestDisplay =
-          args?['walkData'] as IncomingRequestDisplay?;
-          final Map<String, dynamic> finalStats =
-              (args?['finalStats'] as Map<String, dynamic>?) ?? {};
 
           return MaterialPageRoute(
             builder: (context) => PaymentScreen(
               amount: amount,
               walkId: walkId,
-              walkData: incomingRequestDisplay ??
-                  IncomingRequestDisplay.empty(),
-              finalStats: finalStats,
             ),
           );
         }
         return null;
       },
       home: user != null ? const HomeScreen() : const SignUpScreen(),
+      // home: IncomingRequestsScreen(),
     );
   }
 }

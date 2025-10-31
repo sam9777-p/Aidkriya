@@ -116,32 +116,32 @@ class WalkRequestService {
     );
     return _requestsCollection
         .where('recipientId', isEqualTo: walkerId)
-        // [MODIFIED] Query for both statuses
+    // [MODIFIED] Query for both statuses
         .where('status', whereIn: ['Pending', 'Scheduled'])
         .snapshots()
         .map((snapshot) {
-          final requests = snapshot.docs
-              .map(
-                (doc) => WalkRequest.fromMap(
-                  doc.data() as Map<String, dynamic>,
-                  doc.id,
-                ),
-              )
-              .toList();
+      final requests = snapshot.docs
+          .map(
+            (doc) => WalkRequest.fromMap(
+          doc.data() as Map<String, dynamic>,
+          doc.id,
+        ),
+      )
+          .toList();
 
-          requests.sort((a, b) {
-            final aTime = a.createdAt ?? DateTime(2000);
-            final bTime = b.createdAt ?? DateTime(2000);
-            return bTime.compareTo(aTime);
-          });
-          return requests;
-        })
+      requests.sort((a, b) {
+        final aTime = a.createdAt ?? DateTime(2000);
+        final bTime = b.createdAt ?? DateTime(2000);
+        return bTime.compareTo(aTime);
+      });
+      return requests;
+    })
         .handleError((error) {
-          debugPrint(
-            "[WalkRequestService] Error fetching pending requests: $error",
-          );
-          return <WalkRequest>[];
-        });
+      debugPrint(
+        "[WalkRequestService] Error fetching pending requests: $error",
+      );
+      return <WalkRequest>[];
+    });
   }
 
   /// ------------------ ACCEPT REQUEST (FIXED VERSION) ------------------
@@ -173,7 +173,7 @@ class WalkRequestService {
 
       debugPrint("[WalkRequestService] ✅ Request document found");
       Map<String, dynamic> acceptedRequestData =
-          requestDoc.data() as Map<String, dynamic>;
+      requestDoc.data() as Map<String, dynamic>;
       debugPrint(
         "[WalkRequestService] Request data: ${acceptedRequestData.toString().substring(0, 200)}...",
       );
@@ -321,21 +321,21 @@ class WalkRequestService {
         try {
           final response = await http
               .post(
-                Uri.parse(_scheduleUrl),
-                headers: {'Content-Type': 'application/json'},
-                body: jsonEncode({
-                  'walkId': walkId,
-                  'senderId': senderId,
-                  'recipientId': recipientId,
-                  'scheduledTimestampISO': scheduledDateTime.toIso8601String(),
-                }),
-              )
+            Uri.parse(_scheduleUrl),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'walkId': walkId,
+              'senderId': senderId,
+              'recipientId': recipientId,
+              'scheduledTimestampISO': scheduledDateTime.toIso8601String(),
+            }),
+          )
               .timeout(
-                const Duration(seconds: 10),
-                onTimeout: () {
-                  throw Exception("Backend request timed out after 10 seconds");
-                },
-              );
+            const Duration(seconds: 10),
+            onTimeout: () {
+              throw Exception("Backend request timed out after 10 seconds");
+            },
+          );
 
           debugPrint(
             "[WalkRequestService] Backend response status: ${response.statusCode}",
@@ -625,7 +625,7 @@ class WalkRequestService {
         .orderBy('timestamp', descending: false)
         .snapshots()
         .map((snapshot) {
-          return snapshot.docs.map((doc) => doc.data()).toList();
-        });
+      return snapshot.docs.map((doc) => doc.data()).toList();
+    });
   }
 }

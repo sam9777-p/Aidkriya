@@ -28,13 +28,16 @@ class _WalkActiveScreenState extends State<WalkActiveScreen> {
   late Timer _timer;
   Timer? _autoEndTimer;
 
+  // Walk state
   String _currentStatus = 'Accepted';
   Duration _elapsedDuration = Duration.zero;
 
+  // Initial/Simulated Data
   late double _scheduledDurationMinutes;
   double _currentDistance = 0.0;
   final double _agreedRatePerHour = 100.0;
 
+  // Initial location - Initialized in initState
   double? _walkerLat;
   double? _walkerLon;
 
@@ -70,8 +73,10 @@ class _WalkActiveScreenState extends State<WalkActiveScreen> {
     _stopwatch.stop();
     super.dispose();
   }
-  void _startAutoEndTimer() {
 
+  // --- Auto-End Logic ---
+  void _startAutoEndTimer() {
+    // Schedule a timer that fires when the scheduled duration is met
     final duration = Duration(minutes: _scheduledDurationMinutes.toInt());
 
     _autoEndTimer?.cancel();
@@ -119,6 +124,7 @@ class _WalkActiveScreenState extends State<WalkActiveScreen> {
       );
 
       if (mounted) {
+        // Navigate to the Summary Screen
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
@@ -140,7 +146,7 @@ class _WalkActiveScreenState extends State<WalkActiveScreen> {
     }
   }
 
-
+  // --- Start Walk Implementation ---
   Future<void> _onStartWalkPressed() async {
     if (_currentStatus == 'Starting...' || _currentStatus == 'Started') return;
 
@@ -150,7 +156,7 @@ class _WalkActiveScreenState extends State<WalkActiveScreen> {
 
     if (mounted) {
       if (success) {
-
+        // StreamBuilder will handle the rest
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Failed to start walk.')),
@@ -160,7 +166,7 @@ class _WalkActiveScreenState extends State<WalkActiveScreen> {
     }
   }
 
-
+  // --- UI Builders ---
 
   Widget _buildStatsCard(String durationText, double distance, double pace) {
     return Padding(
@@ -241,7 +247,11 @@ class _WalkActiveScreenState extends State<WalkActiveScreen> {
   }
 
   void _onMessageTapped() {
+    // ScaffoldMessenger.of(context).showSnackBar(
+    //   const SnackBar(content: Text('Chat screen navigation coming soon!')),
+    // ); // [REMOVE] Old placeholder
 
+    // [NEW] Navigate to ChatScreen
     final isWalker = _currentUserId == widget.walkData.recipientId;
     final partnerName = isWalker ? widget.walkData.senderName : widget.walkData.recipientId; // Use Wanderer's name
     final partnerId = isWalker ? widget.walkData.senderId : widget.walkData.recipientId;
