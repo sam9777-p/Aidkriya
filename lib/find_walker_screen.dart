@@ -11,9 +11,9 @@ import 'components/map_view_widget.dart';
 import 'components/view_toggle.dart';
 import 'components/walker_card.dart';
 import 'model/Walker.dart';
-import 'model/schedule_walk_screen.dart';
 import 'model/user_model.dart';
 import 'model/walker_list_early.dart';
+import 'schedule_walk_screen.dart';
 
 class FindWalkerScreen extends StatefulWidget {
   const FindWalkerScreen({super.key});

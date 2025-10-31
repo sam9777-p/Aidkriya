@@ -66,7 +66,6 @@ class RequestCard extends StatelessWidget {
               icon: Icons.timelapse_outlined,
               text: request.duration,
             ),
-            const SizedBox(height: 20),
           ],
         ),
       ),

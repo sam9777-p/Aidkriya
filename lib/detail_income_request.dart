@@ -18,7 +18,7 @@ class DetailIncomeRequest extends StatefulWidget {
   final IncomingRequestDisplay displayRequest;
 
   const DetailIncomeRequest({Key? key, required this.displayRequest})
-      : super(key: key);
+    : super(key: key);
 
   @override
   State<DetailIncomeRequest> createState() => _DetailIncomeRequestState();
@@ -102,7 +102,8 @@ class _DetailIncomeRequestState extends State<DetailIncomeRequest> {
                   const SizedBox(height: 24),
                   _buildWalkDetailsSection(),
                   const SizedBox(height: 32),
-                  if (widget.displayRequest.status == 'Pending')
+                  if (widget.displayRequest.status == 'Pending' ||
+                      widget.displayRequest.status == 'Scheduled')
                     _buildActionButtons()
                   else
                     _buildStatusIndicator(),
@@ -192,7 +193,8 @@ class _DetailIncomeRequestState extends State<DetailIncomeRequest> {
             icon: Icons.location_on,
             iconColor: const Color(0xFF6BCBA6),
             primaryText: 'Distance',
-            secondaryText: _calculateDistanceString(), // Use the formatted string
+            secondaryText:
+                _calculateDistanceString(), // Use the formatted string
           ),
           const SizedBox(height: 16),
         ],
@@ -267,10 +269,10 @@ class _DetailIncomeRequestState extends State<DetailIncomeRequest> {
             onPressed: _isRejecting ? null : _onRejectPressed,
             child: _isRejecting
                 ? const SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
                 : const Text('Reject', style: TextStyle(color: Colors.red)),
           ),
         ],
@@ -333,14 +335,14 @@ class _DetailIncomeRequestState extends State<DetailIncomeRequest> {
             onPressed: _isAccepting ? null : _onAcceptPressed,
             child: _isAccepting
                 ? const SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
                 : const Text(
-              'Accept',
-              style: TextStyle(color: Color(0xFF6BCBA6)),
-            ),
+                    'Accept',
+                    style: TextStyle(color: Color(0xFF6BCBA6)),
+                  ),
           ),
         ],
       ),
@@ -352,17 +354,41 @@ class _DetailIncomeRequestState extends State<DetailIncomeRequest> {
 
     setState(() => _isAccepting = true);
 
+    debugPrint("========================================");
+    debugPrint("[DetailIncomeRequest] Starting accept process");
+    debugPrint(
+      "[DetailIncomeRequest] Walk ID: ${widget.displayRequest.walkId}",
+    );
+    debugPrint(
+      "[DetailIncomeRequest] Sender ID: ${widget.displayRequest.senderId}",
+    );
+    debugPrint(
+      "[DetailIncomeRequest] Recipient ID: ${widget.displayRequest.recipientId}",
+    );
+    debugPrint("[DetailIncomeRequest] Status: ${widget.displayRequest.status}");
+    debugPrint("========================================");
+
     try {
+      debugPrint("[DetailIncomeRequest] Calling acceptRequest...");
+
       bool success = await _walkService.acceptRequest(
         walkId: widget.displayRequest.walkId,
         senderId: widget.displayRequest.senderId,
         recipientId: widget.displayRequest.recipientId,
       );
-      if (!mounted) return;
 
-      Navigator.pop(context);
+      debugPrint("[DetailIncomeRequest] acceptRequest returned: $success");
+
+      if (!mounted) {
+        debugPrint("[DetailIncomeRequest] Widget not mounted, returning");
+        return;
+      }
+
+      Navigator.pop(context); // Close the dialog
 
       if (success) {
+        debugPrint("[DetailIncomeRequest] ✅ Request accepted successfully");
+
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Request accepted!'),
@@ -370,7 +396,7 @@ class _DetailIncomeRequestState extends State<DetailIncomeRequest> {
           ),
         );
 
-        // --- FIX: Create a new, updated WalkData object to pass ---
+        // Create updated walk data
         final updatedWalkData = IncomingRequestDisplay(
           walkId: widget.displayRequest.walkId,
           senderId: widget.displayRequest.senderId,
@@ -383,32 +409,49 @@ class _DetailIncomeRequestState extends State<DetailIncomeRequest> {
           duration: widget.displayRequest.duration,
           latitude: widget.displayRequest.latitude,
           longitude: widget.displayRequest.longitude,
-          status: 'Accepted', // The new status
-          distance: _calculateDistanceValue().toInt(), // Use the calculated distance
+          status: 'Accepted',
+          distance: _calculateDistanceValue().toInt(),
           notes: widget.displayRequest.notes,
         );
 
-        // Navigation to Active Walk Screen
-        if (mounted) {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(
-              builder: (context) => WalkActiveScreen(
-                walkData: updatedWalkData, // Pass the FIXED object
-              ),
-            ),
-          );
-        }
+        // Check if it's an instant walk (status was 'Pending')
+        final bool isInstantWalk = widget.displayRequest.status == 'Pending';
+        debugPrint("[DetailIncomeRequest] Is instant walk? $isInstantWalk");
 
+        if (isInstantWalk) {
+          debugPrint("[DetailIncomeRequest] Navigating to WalkActiveScreen...");
+          if (mounted) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (context) =>
+                    WalkActiveScreen(walkData: updatedWalkData),
+              ),
+            );
+          }
+        } else {
+          debugPrint(
+            "[DetailIncomeRequest] Scheduled walk - just popping back",
+          );
+          if (mounted) {
+            Navigator.of(context).pop();
+          }
+        }
       } else {
+        debugPrint("[DetailIncomeRequest] ❌ acceptRequest returned false");
         _showErrorSnackBar(
           'Failed to accept request. It might have been cancelled or an error occurred.',
         );
-        // If acceptance failed, pop the details screen back to the list
         if (mounted) Navigator.pop(context);
       }
-    } catch (e) {
-      debugPrint("[DetailIncomeRequest] Error accepting request: $e");
+    } catch (e, stackTrace) {
+      debugPrint("========================================");
+      debugPrint("[DetailIncomeRequest] ❌ Exception in _onAcceptPressed");
+      debugPrint("[DetailIncomeRequest] Error: $e");
+      debugPrint("[DetailIncomeRequest] Stack trace:");
+      debugPrint(stackTrace.toString());
+      debugPrint("========================================");
+
       if (mounted) {
         Navigator.pop(context);
         _showErrorSnackBar('An error occurred: $e');
@@ -430,6 +473,7 @@ class _DetailIncomeRequestState extends State<DetailIncomeRequest> {
         break;
       case 'Rejected':
       case 'Cancelled':
+      case 'Expired':
         statusColor = Colors.red;
         break;
       case 'Completed':
@@ -441,7 +485,8 @@ class _DetailIncomeRequestState extends State<DetailIncomeRequest> {
         break;
     }
 
-    if (statusText == 'Pending') return const SizedBox.shrink();
+    if (statusText == 'Pending' || statusText == 'Scheduled')
+      return const SizedBox.shrink();
 
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 20),

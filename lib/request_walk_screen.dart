@@ -36,7 +36,7 @@ class _RequestWalkScreenState extends State<RequestWalkScreen> {
 
   // Walk details data
   DateTime _selectedDateTime =
-  DateTime.now(); // Store as DateTime for easier use
+      DateTime.now(); // Store as DateTime for easier use
   String selectedDuration = 'Select duration';
   int? _selectedDurationMinutes; // Store the raw minutes
   String selectedLocation = 'Your Location';
@@ -67,9 +67,16 @@ class _RequestWalkScreenState extends State<RequestWalkScreen> {
         debugPrint("[RequestWalkScreen] Error fetching user profile: $e");
         // Fallback to minimal placeholder profile in case of fetch failure
         _currentUserProfile = UserModel(
-            fullName: 'Wanderer User',
-            age: 0, city: '', bio: '', phone: '', interests: [],
-            rating: 5, imageUrl: '', walks: 0, earnings: 0
+          fullName: 'Wanderer User',
+          age: 0,
+          city: '',
+          bio: '',
+          phone: '',
+          interests: [],
+          rating: 5,
+          imageUrl: '',
+          walks: 0,
+          earnings: 0,
         );
       }
     }
@@ -276,16 +283,6 @@ class _RequestWalkScreenState extends State<RequestWalkScreen> {
                 onTap: () => _onLocationTapped(),
               ),
               const Divider(height: 32),
-              // Add Notes Field (Optional)
-              TextField(
-                decoration: InputDecoration(
-                  icon: Icon(Icons.note_add_outlined, color: Colors.grey[600]),
-                  hintText: 'Add optional notes for the walker...',
-                  border: InputBorder.none,
-                ),
-                maxLines: 2,
-                // controller: _notesController, // Add a TextEditingController if needed
-              ),
             ],
           ),
         ),
@@ -300,9 +297,10 @@ class _RequestWalkScreenState extends State<RequestWalkScreen> {
       child: ElevatedButton(
         // [MODIFIED] Check that _currentUserProfile is also available
         onPressed:
-        _isSending ||
-            _currentUserId == null ||
-            _currentUserProfile == null // Check if profile data is loaded
+            _isSending ||
+                _currentUserId == null ||
+                _currentUserProfile ==
+                    null // Check if profile data is loaded
             ? null
             : _onSendRequestPressed,
         style: ElevatedButton.styleFrom(
@@ -316,17 +314,17 @@ class _RequestWalkScreenState extends State<RequestWalkScreen> {
         ),
         child: _isSending
             ? const SizedBox(
-          width: 24,
-          height: 24,
-          child: CircularProgressIndicator(
-            color: Colors.white,
-            strokeWidth: 2.5,
-          ),
-        )
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(
+                  color: Colors.white,
+                  strokeWidth: 2.5,
+                ),
+              )
             : const Text(
-          'Send Request',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-        ),
+                'Send Request',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+              ),
       ),
     );
   }
@@ -410,7 +408,6 @@ class _RequestWalkScreenState extends State<RequestWalkScreen> {
       return;
     }
 
-
     setState(() => _isSending = true); // Start loading indicator
 
     // --- Prepare Request Data ---
@@ -425,7 +422,7 @@ class _RequestWalkScreenState extends State<RequestWalkScreen> {
       'latitude': _currentPosition!.latitude,
       'longitude': _currentPosition!.longitude,
       'status':
-      'Pending', // Initial status set by service, but good practice here too
+          'Pending', // Initial status set by service, but good practice here too
       'notes': null, // Get from _notesController if you add one
       'createdAt': FieldValue.serverTimestamp(), // Set by service
       'updatedAt': FieldValue.serverTimestamp(), // Set by service
@@ -464,9 +461,13 @@ class _RequestWalkScreenState extends State<RequestWalkScreen> {
       }
     } catch (error) {
       // The error is a generic catch-all for any exception during the request process.
-      debugPrint("[RequestWalkScreen] Failed to send request with ERROR: $error");
+      debugPrint(
+        "[RequestWalkScreen] Failed to send request with ERROR: $error",
+      );
       if (mounted) {
-        _showErrorSnackBar('Failed to send request: Check network connection and server URL.');
+        _showErrorSnackBar(
+          'Failed to send request: Check network connection and server URL.',
+        );
       }
     } finally {
       if (mounted) {
