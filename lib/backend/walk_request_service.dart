@@ -33,9 +33,9 @@ class WalkRequestService {
       .collection('users');
 
   // 🔥 Replace this with your deployed backend URL
-  final String _serverUrl = "http://172.22.72.110:3000/api/sendNotification";
+  final String _serverUrl = "https://aid-backend-1.onrender.com/api/sendNotification";
 
-  final String _scheduleUrl = "http://172.22.72.110:3000/api/schedule-walk";
+  final String _scheduleUrl = "https://aid-backend-1.onrender.com/api/schedule-walk";
   // -------------------- Helper to trigger FCM via backend --------------------
   Future<void> _triggerNotification({
     required String recipientId,
