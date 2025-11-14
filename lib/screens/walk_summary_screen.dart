@@ -2,6 +2,7 @@
 
 import 'package:aidkriya_walker/model/incoming_request_display.dart';
 import 'package:cloud_firestore/cloud_firestore.dart'; // [NEW] Import Firestore
+import 'package:firebase_auth/firebase_auth.dart'; // [NEW] Import Auth
 import 'package:flutter/material.dart';
 
 import '../home_screen.dart';
@@ -26,6 +27,9 @@ class _WalkSummaryScreenState extends State<WalkSummaryScreen> {
   // [NEW] State class
   int _currentRating = 0; // State for the selected rating (1 to 5)
   bool _isSubmitting = false; // State for feedback submission
+
+  // [NEW] Get current user ID
+  final String? currentUserId = FirebaseAuth.instance.currentUser?.uid;
 
   // --- Feedback Submission Logic ---
 
@@ -187,8 +191,8 @@ class _WalkSummaryScreenState extends State<WalkSummaryScreen> {
             context,
             MaterialPageRoute(
                 builder: (context) => PaymentScreen(
-                    amount: widget.finalStats['amountDue'] ?? 0.0,
-                    walkId: widget.walkData.walkId,
+                  amount: widget.finalStats['amountDue'] ?? 0.0,
+                  walkId: widget.walkData.walkId,
                 )
             )
         );
@@ -284,6 +288,45 @@ class _WalkSummaryScreenState extends State<WalkSummaryScreen> {
     );
   }
 
+  // [NEW] Widget for Walker's view
+  Widget _buildWalkerSummaryView(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          "Walk Complete!",
+          textAlign: TextAlign.center,
+          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          "Waiting for the Wanderer to complete payment and leave feedback.",
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 16, color: Colors.grey[700]),
+        ),
+        const SizedBox(height: 24),
+        ElevatedButton(
+          onPressed: () {
+            Navigator.of(context).pushAndRemoveUntil(
+              MaterialPageRoute(builder: (context) => const HomeScreen()),
+                  (Route<dynamic> route) => false,
+            );
+          },
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFFA8D8B9),
+            foregroundColor: Colors.black87,
+            padding: const EdgeInsets.all(15),
+          ),
+          child: const Text(
+            'Back to Home',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          ),
+        ),
+      ],
+    );
+  }
+
+
   // Helper method to build the contribution section
   Widget _buildContributionSection(String distance, String contribution) {
     return Container(
@@ -335,6 +378,10 @@ class _WalkSummaryScreenState extends State<WalkSummaryScreen> {
     final amountDueStr = "₹${amountDue.toStringAsFixed(2)}";
     final contributionStr = "₹${contributionAmount.toStringAsFixed(0)}";
 
+    // [NEW] Check the user's role in this walk
+    // The "sender" is the Wanderer, "recipient" is the Walker
+    final bool isWanderer = (currentUserId == widget.walkData.senderId);
+
     return Scaffold(
       backgroundColor: Colors.grey[50],
       appBar: AppBar(
@@ -366,9 +413,20 @@ class _WalkSummaryScreenState extends State<WalkSummaryScreen> {
             const SizedBox(height: 20),
             _buildAmountDueCard(amountDueStr),
             const SizedBox(height: 20),
-            _buildPayNowButton(context),
-            const SizedBox(height: 40),
-            _buildFeedbackSection(context),
+
+            // --- [MODIFIED] Role-Aware Section ---
+            if (isWanderer) ...[
+              // Show Payment and Feedback to the Wanderer
+              _buildPayNowButton(context),
+              const SizedBox(height: 40),
+              _buildFeedbackSection(context),
+            ] else ...[
+              // Show a summary message to the Walker
+              const SizedBox(height: 20),
+              _buildWalkerSummaryView(context),
+            ],
+            // --- End Role-Aware Section ---
+
             const SizedBox(height: 40),
             _buildContributionSection(distanceStr, contributionStr),
           ],

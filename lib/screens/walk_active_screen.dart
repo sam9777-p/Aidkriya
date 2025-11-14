@@ -1,3 +1,4 @@
+// lib/screens/walk_active_screen.dart
 import 'dart:async';
 import 'package:aidkriya_walker/components/request_map_widget.dart';
 import 'package:aidkriya_walker/components/walker_avatar.dart';
@@ -33,10 +34,13 @@ class _WalkActiveScreenState extends State<WalkActiveScreen> {
   String _currentStatus = 'Accepted';
   Duration _elapsedDuration = Duration.zero;
 
+  // [NEW] Loading state for ending walk
+  bool _isEndingWalk = false;
+
   // Initial/Simulated Data
   late double _scheduledDurationMinutes;
   double _currentDistance = 0.0;
-  final double _agreedRatePerHour = 100.0;
+  // REMOVED: final double _agreedRatePerHour = 100.0;
 
   // Initial location - Initialized in initState
   double? _walkerLat;
@@ -98,12 +102,15 @@ class _WalkActiveScreenState extends State<WalkActiveScreen> {
     _timer.cancel();
     _autoEndTimer?.cancel();
 
-    if (_currentStatus == 'Ending' || _currentStatus == 'Completed') return;
+    if (_currentStatus == 'Ending' || _currentStatus == 'Completed' || _isEndingWalk) return;
 
-    setState(() => _currentStatus = 'Ending');
+    // [MODIFIED] Set loading state
+    setState(() {
+      _currentStatus = 'Ending';
+      _isEndingWalk = true;
+    });
 
     final double elapsedMinutes = _elapsedDuration.inSeconds / 60.0;
-
     final userIdEnding = _currentUserId;
 
     ScaffoldMessenger.of(context).showSnackBar(
@@ -114,37 +121,33 @@ class _WalkActiveScreenState extends State<WalkActiveScreen> {
     );
 
     try {
-      final Map<String, dynamic> finalStats = await _walkService.endWalk(
+      // [MODIFIED] Only call the service. DO NOT navigate.
+      // HomeScreen listener will handle navigation.
+      await _walkService.endWalk(
         walkId: widget.walkData.walkId,
         userIdEnding: userIdEnding,
         isWalker: isWalkerInitiated,
         scheduledDurationMinutes: _scheduledDurationMinutes,
         elapsedMinutes: elapsedMinutes,
-        agreedRatePerHour: _agreedRatePerHour,
         finalDistanceKm: _currentDistance,
       );
 
-      if (mounted) {
-        // Navigate to the Summary Screen
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (context) => WalkSummaryScreen(
-              walkData: widget.walkData,
-              finalStats: finalStats,
-            ),
-          ),
-        );
-      }
+      // [REMOVED] Navigation logic
+
     } catch (e) {
       debugPrint("[WalkActiveScreen] Error finalizing walk: $e");
       if (mounted) {
-        setState(() => _currentStatus = 'Started');
+        // [MODIFIED] Reset state on error
+        setState(() {
+          _currentStatus = 'Started';
+          _isEndingWalk = false;
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to end walk: $e')),
         );
       }
     }
+    // [REMOVED] Finally block, as _isEndingWalk will persist until screen is destroyed
   }
 
   Future<void> _launchEmergencyCall() async {
@@ -156,14 +159,14 @@ class _WalkActiveScreenState extends State<WalkActiveScreen> {
       await launchUrl(phoneUri);
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Unable to open dialer. Please call 112 manually.')),
-          );
+        const SnackBar(content: Text('Unable to open dialer. Please call 112 manually.')),
+      );
     }
-    }
+  }
 
   // --- Start Walk Implementation ---
   Future<void> _onStartWalkPressed() async {
-    if (_currentStatus == 'Starting...' || _currentStatus == 'Started') return;
+    if (_currentStatus == 'Starting...' || _currentStatus == 'Started' || _isEndingWalk) return;
 
     setState(() => _currentStatus = 'Starting...');
 
@@ -262,10 +265,6 @@ class _WalkActiveScreenState extends State<WalkActiveScreen> {
   }
 
   void _onMessageTapped() {
-    // ScaffoldMessenger.of(context).showSnackBar(
-    //   const SnackBar(content: Text('Chat screen navigation coming soon!')),
-    // ); // [REMOVE] Old placeholder
-
     // [NEW] Navigate to ChatScreen
     final isWalker = _currentUserId == widget.walkData.recipientId;
     final partnerName = isWalker ? widget.walkData.senderName : widget.walkData.recipientId; // Use Wanderer's name
@@ -284,6 +283,22 @@ class _WalkActiveScreenState extends State<WalkActiveScreen> {
   }
 
   Widget _buildActionButtons(String status) {
+    // [MODIFIED] Show loader if ending
+    if (_isEndingWalk) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(16.0),
+          child: Column(
+            children: [
+              CircularProgressIndicator(color: Colors.white),
+              SizedBox(height: 10),
+              Text("Finalizing walk...", style: TextStyle(color: Colors.white, fontSize: 16)),
+            ],
+          ),
+        ),
+      );
+    }
+
     if (status == 'Started') {
       return Row(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -330,33 +345,6 @@ class _WalkActiveScreenState extends State<WalkActiveScreen> {
           FloatingActionButton(
             heroTag: 'Chat',
             onPressed: _onMessageTapped,
-            child: const Icon(Icons.chat_bubble_outline),
-          ),
-        ],
-      );
-    }
-    if (status == 'Started') {
-      return Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-// ... (SOS and EndWalk buttons are unchanged)
-          const SizedBox(width: 16),
-          FloatingActionButton(
-            heroTag: 'Chat',
-            onPressed: _onMessageTapped, // [MODIFIED] Use new callback
-            child: const Icon(Icons.chat_bubble_outline),
-          ),
-        ],
-      );
-    } else {
-      return Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-// ... (StartWalk button is unchanged)
-          const SizedBox(width: 16),
-          FloatingActionButton(
-            heroTag: 'Chat',
-            onPressed: _onMessageTapped, // [MODIFIED] Use new callback
             child: const Icon(Icons.chat_bubble_outline),
           ),
         ],
@@ -412,7 +400,11 @@ class _WalkActiveScreenState extends State<WalkActiveScreen> {
         double currentPace = 0.0;
         String durationText = widget.walkData.duration;
 
-        if (snapshot.hasData && snapshot.data!.exists) {
+        // [MODIFIED] If ending, stick to Ending status
+        if (_isEndingWalk) {
+          currentStatus = 'Ending';
+        }
+        else if (snapshot.hasData && snapshot.data!.exists) {
           final data = snapshot.data!.data() as Map<String, dynamic>?;
           currentStatus = data?['status'] as String? ?? widget.walkData.status;
 
@@ -440,32 +432,17 @@ class _WalkActiveScreenState extends State<WalkActiveScreen> {
 
           }
 
-          // STATUS: Completed or Cancelled (Check if ending occurred on backend)
-          else if (currentStatus == 'Completed' || currentStatus.contains('Cancelled')) {
-            final finalStats = data?['finalStats'] as Map<String, dynamic>?;
-            if (finalStats != null && mounted) {
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => WalkSummaryScreen(
-                      walkData: widget.walkData,
-                      finalStats: finalStats,
-                    ),
-                  ),
-                );
-              });
-              return const Scaffold(body: Center(child: CircularProgressIndicator()));
-            }
-            return const Scaffold(body: Center(child: CircularProgressIndicator()));
-          }
+          // [REMOVED] Status 'Completed' or 'Cancelled' logic.
+          // HomeScreen will handle this navigation.
 
           // Update local status for button logic
           if(currentStatus != _currentStatus) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
-              setState(() {
-                _currentStatus = currentStatus;
-              });
+              if (mounted) {
+                setState(() {
+                  _currentStatus = currentStatus;
+                });
+              }
             });
           }
         }

@@ -1,3 +1,4 @@
+// lib/home_screen.dart
 import 'dart:async';
 
 import 'package:aidkriya_walker/backend/location_service.dart';
@@ -17,6 +18,7 @@ import 'backend/pedometer_service.dart';
 import 'find_walker_screen.dart';
 import 'model/incoming_request_display.dart';
 import 'model/user_model.dart';
+import 'screens/walk_summary_screen.dart'; // [NEW] Import Summary Screen
 import 'screens/wanderer_active_walk_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -43,6 +45,9 @@ class _HomeScreenState extends State<HomeScreen> {
   StreamSubscription<DocumentSnapshot>? _walkStatusSubscription;
   String? _activeWalkStatus; // To hold the status (e.g., 'Pending', 'Accepted')
   // END: New state for walk status management
+
+  // [NEW] Flag to prevent multiple summary navigations
+  bool _isCheckingForSummary = false;
 
   @override
   void initState() {
@@ -76,9 +81,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   // Streams user data, including activeWalkId
-  // In lib/home_screen.dart
-
-  // Streams user data, including activeWalkId
   Future<void> _subscribeToUserData() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
@@ -97,97 +99,218 @@ class _HomeScreenState extends State<HomeScreen> {
         .snapshots() // Listen for changes
         .listen(
           (doc) async {
-            if (doc.exists && mounted) {
-              // Add mounted check here
-              final data = doc.data()!;
-              final userModel = UserModel.fromMap(data);
+        if (doc.exists && mounted) {
+          // Add mounted check here
+          final data = doc.data()!;
+          final userModel = UserModel.fromMap(data);
 
-              final userRole = data['role'];
-              final isWalker =
-                  userRole != null &&
+          final userRole = data['role'];
+          final isWalker =
+              userRole != null &&
                   (userRole.toString().toLowerCase() == 'walker' ||
                       userRole.toString() == 'Walker');
 
-              final newActiveWalkId = userModel.activeWalkId;
-              final oldActiveWalkId =
-                  _user?.activeWalkId; // Check previous value
+          final newActiveWalkId = userModel.activeWalkId;
+          final oldActiveWalkId =
+              _user?.activeWalkId; // Check previous value
 
+          // --- [START OF FIX] ---
+          // Check if a walk has JUST finished
+          if (oldActiveWalkId != null &&
+              oldActiveWalkId.isNotEmpty &&
+              (newActiveWalkId == null || newActiveWalkId.isEmpty) &&
+              !_isCheckingForSummary) { // Prevent re-entry
+
+            debugPrint("HomeScreen: Detected activeWalkId removed. A walk has finished.");
+
+            // This is the "end of walk" trigger.
+            // We must now check for a summary.
+
+            // First, update the state to stop any active walk UI
+            setState(() {
+              _user = userModel;
+              _isWalker = isWalker;
+              _isLoading = false;
+              _isCheckingForSummary = true; // Set lock
+            });
+
+            // Stop listening to the (now old) walk status
+            _walkStatusSubscription?.cancel();
+            _walkStatusSubscription = null;
+            setState(() { _activeWalkStatus = null; });
+
+            // Go fetch the summary data
+            await _checkAndNavigateToSummary(oldActiveWalkId, isWalker);
+
+            setState(() {
+              _isCheckingForSummary = false; // Release lock
+            });
+
+            // Return *early* to prevent the rest of the listener logic from running
+            // This prevents the race condition.
+            return;
+          }
+          // --- [END OF FIX] ---
+
+          // This code now only runs if a walk hasn't just finished
+          setState(() {
+            _user = userModel;
+            _isWalker = isWalker;
+            _isLoading = false;
+          });
+
+          // [MODIFIED] Manage Walk Status Subscription for ANY user
+          if (newActiveWalkId != null && newActiveWalkId.isNotEmpty) {
+            // The current walk ID has changed or the subscription is missing/stale
+            if (newActiveWalkId != oldActiveWalkId ||
+                _walkStatusSubscription == null) {
+              _walkStatusSubscription?.cancel();
+              _walkStatusSubscription = null;
               setState(() {
-                _user = userModel;
-                _isWalker = isWalker;
-                _isLoading = false;
+                _activeWalkStatus =
+                null; // Clear old status while fetching new one
               });
 
-              // --- [START OF FIX] ---
-              // [MODIFIED] Manage Walk Status Subscription for ANY user
-              if (newActiveWalkId != null && newActiveWalkId.isNotEmpty) {
-                // The current walk ID has changed or the subscription is missing/stale
-                if (newActiveWalkId != oldActiveWalkId ||
-                    _walkStatusSubscription == null) {
-                  _walkStatusSubscription?.cancel();
-                  _walkStatusSubscription = null;
+              // Start listening to the accepted_walks document for the status
+              _walkStatusSubscription = FirebaseFirestore.instance
+                  .collection('accepted_walks')
+                  .doc(newActiveWalkId)
+                  .snapshots()
+                  .listen((walkDoc) {
+                if (walkDoc.exists && mounted) {
+                  setState(() {
+                    // Update the status
+                    _activeWalkStatus =
+                    walkDoc.data()?['status'] as String?;
+                  });
+                  debugPrint(
+                    'HomeScreen: Walk status updated to: $_activeWalkStatus',
+                  );
+                } else if (mounted) {
+                  // Document missing (e.g., cancelled/completed/deleted from active_walks)
                   setState(() {
                     _activeWalkStatus =
-                        null; // Clear old status while fetching new one
+                    null; // Forces back to default screen
                   });
-
-                  // Start listening to the accepted_walks document for the status
-                  _walkStatusSubscription = FirebaseFirestore.instance
-                      .collection('accepted_walks')
-                      .doc(newActiveWalkId)
-                      .snapshots()
-                      .listen((walkDoc) {
-                        if (walkDoc.exists && mounted) {
-                          setState(() {
-                            // Update the status
-                            _activeWalkStatus =
-                                walkDoc.data()?['status'] as String?;
-                          });
-                          debugPrint(
-                            'HomeScreen: Walk status updated to: $_activeWalkStatus',
-                          );
-                        } else if (mounted) {
-                          // Document missing (e.g., cancelled/completed/deleted from active_walks)
-                          setState(() {
-                            _activeWalkStatus =
-                                null; // Forces back to default screen
-                          });
-                        }
-                      });
                 }
-              } else {
-                // User has no active walk ID.
-                _walkStatusSubscription?.cancel();
-                _walkStatusSubscription = null;
-                setState(() {
-                  _activeWalkStatus = null;
-                });
-              }
-              // --- [END OF FIX] ---
-
-              // Manage Walker location tracking
-              if (_isWalker) {
-                // Check context validity before using it
-                if (mounted) await locationService.startTracking(context);
-              } else {
-                await locationService.stopTracking();
-              }
-
-              debugPrint(
-                'HomeScreen: User profile updated. Role: $userRole, ActiveWalkId: ${_user?.activeWalkId}',
-              );
-            } else if (mounted) {
-              setState(() => _isLoading = false);
-              debugPrint('HomeScreen: User document does not exist.');
-              // Optionally handle scenario where user doc is deleted (e.g., logout)
+              });
             }
-          },
-          onError: (error) {
-            debugPrint('HomeScreen: Error streaming user data: $error');
-            if (mounted) setState(() => _isLoading = false);
-          },
-        );
+          } else {
+            // User has no active walk ID.
+            _walkStatusSubscription?.cancel();
+            _walkStatusSubscription = null;
+            if (mounted) {
+              setState(() {
+                _activeWalkStatus = null;
+              });
+            }
+          }
+
+          // Manage Walker location tracking
+          if (_isWalker) {
+            // Check context validity before using it
+            if (mounted) await locationService.startTracking(context);
+          } else {
+            await locationService.stopTracking();
+          }
+
+          debugPrint(
+            'HomeScreen: User profile updated. Role: $userRole, ActiveWalkId: ${_user?.activeWalkId}',
+          );
+        } else if (mounted) {
+          setState(() => _isLoading = false);
+          debugPrint('HomeScreen: User document does not exist.');
+          // Optionally handle scenario where user doc is deleted (e.g., logout)
+        }
+      },
+      onError: (error) {
+        debugPrint('HomeScreen: Error streaming user data: $error');
+        if (mounted) setState(() => _isLoading = false);
+      },
+    );
   }
+
+  // [NEW] Method to handle navigation to summary
+  Future<void> _checkAndNavigateToSummary(String oldWalkId, bool isWalker) async {
+    if (!mounted) return;
+    debugPrint("HomeScreen: Checking for summary for walk $oldWalkId...");
+
+    try {
+      final walkDoc = await FirebaseFirestore.instance
+          .collection('accepted_walks')
+          .doc(oldWalkId)
+          .get();
+
+      if (walkDoc.exists && walkDoc.data()?['summaryAvailable'] == true) {
+        debugPrint("HomeScreen: Summary found. Navigating to WalkSummaryScreen.");
+
+        final walkData = walkDoc.data()!;
+        final finalStats = walkData['finalStats'] as Map<String, dynamic>? ?? {};
+
+        // Reconstruct the display data needed by the summary screen
+        // The summary screen needs the *partner's* info.
+        Map<String, dynamic> partnerInfo;
+        String partnerName;
+        String? partnerImgUrl;
+        String? partnerBio;
+
+        // Determine who the partner was
+        if (isWalker) {
+          // I am a Walker. My partner was the Sender (Wanderer).
+          partnerInfo = walkData['senderInfo'] as Map<String, dynamic>? ?? {};
+          partnerName = partnerInfo['fullName'] ?? 'Wanderer';
+          partnerImgUrl = partnerInfo['imageUrl'];
+          partnerBio = null; // We don't store Wanderer's bio in the request
+        } else {
+          // I am a Wanderer. My partner was the Recipient (Walker).
+          // 'recipientInfo' is the denormalized 'walkerProfile'
+          partnerInfo = walkData['recipientInfo'] as Map<String, dynamic>? ??
+              walkData['walkerProfile'] as Map<String, dynamic>? ?? {};
+          partnerName = partnerInfo['name'] ?? 'Walker'; // Note: 'name' from walkerProfile
+          partnerImgUrl = partnerInfo['imageUrl'];
+          partnerBio = partnerInfo['bio'];
+        }
+
+        final displayData = IncomingRequestDisplay(
+          walkId: oldWalkId,
+          senderId: walkData['senderId'] ?? '',
+          recipientId: walkData['recipientId'] ?? '',
+          senderName: partnerName, // This is now the PARTNER's name
+          senderImageUrl: partnerImgUrl, // PARTNER's image
+          senderBio: partnerBio, // PARTNER's bio
+          date: walkData['date'] ?? '',
+          time: walkData['time'] ?? '',
+          duration: walkData['duration'] ?? '',
+          latitude: (walkData['latitude'] as num?)?.toDouble() ?? 0.0,
+          longitude: (walkData['longitude'] as num?)?.toDouble() ?? 0.0,
+          status: walkData['status'] ?? 'Completed',
+          distance: (finalStats['finalDistanceKm'] as num?)?.toInt() ?? 0,
+          notes: walkData['notes'],
+        );
+
+        if (!mounted) return;
+
+        // Navigate to the summary screen
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => WalkSummaryScreen(
+              walkData: displayData,
+              finalStats: finalStats,
+            ),
+          ),
+        );
+
+      } else {
+        debugPrint("HomeScreen: No summary found or doc missing. Just refreshing home.");
+        // No summary, just stay on the (now refreshed) HomeScreen.
+        // The _getCurrentScreen() logic will show the correct default screen.
+      }
+    } catch (e) {
+      debugPrint("HomeScreen: Error checking for summary: $e");
+      // Fallback: just stay on HomeScreen.
+    }
+  }
+
 
   @override
   void dispose() {
@@ -208,8 +331,7 @@ class _HomeScreenState extends State<HomeScreen> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
     if (FirebaseAuth.instance.currentUser == null) {
-      // No user logged in - perhaps show login screen or appropriate UI
-      // For now, showing an empty container or login prompt might be best.
+      // No user logged in
       return const Scaffold(body: Center(child: Text("Please log in.")));
     }
 
@@ -306,6 +428,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   final senderInfo =
                       data['senderInfo'] as Map<String, dynamic>? ?? {};
 
+                  // [FIX] Get walker profile data for distance
+                  final walkerProfile = data['walkerProfile'] as Map<String, dynamic>? ?? {};
+
                   final displayData = IncomingRequestDisplay(
                     walkId: activeWalkId,
                     senderId: data['senderId'] ?? '',
@@ -313,16 +438,14 @@ class _HomeScreenState extends State<HomeScreen> {
                     senderName: senderInfo['fullName'] ?? 'Wanderer',
                     senderImageUrl: senderInfo['imageUrl'],
                     senderBio:
-                        senderInfo['bio'], // This will be null, which is fine
+                    senderInfo['bio'], // This will be null, which is fine
                     date: data['date'] ?? '',
                     time: data['time'] ?? '',
                     duration: data['duration'] ?? '',
                     latitude: (data['latitude'] as num?)?.toDouble() ?? 0.0,
                     longitude: (data['longitude'] as num?)?.toDouble() ?? 0.0,
                     status: data['status'] ?? 'Accepted',
-                    distance:
-                        (data['walkerProfile']?['distance'] as num?)?.toInt() ??
-                        0,
+                    distance: (walkerProfile['distance'] as num?)?.toInt() ?? 0, // Use distance from walkerProfile
                     notes: data['notes'],
                   );
 
@@ -394,7 +517,7 @@ class _HomeScreenState extends State<HomeScreen> {
             radius: 20,
             backgroundColor: Colors.grey[300],
             backgroundImage:
-                _user?.imageUrl != null && _user!.imageUrl!.isNotEmpty
+            _user?.imageUrl != null && _user!.imageUrl!.isNotEmpty
                 ? NetworkImage(_user!.imageUrl!)
                 : null, // Use null if URL is empty or null
             child: (_user?.imageUrl == null || _user!.imageUrl!.isEmpty)

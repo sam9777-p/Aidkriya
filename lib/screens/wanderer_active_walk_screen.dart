@@ -1,3 +1,4 @@
+// lib/screens/wanderer_active_walk_screen.dart
 import 'dart:async';
 
 import 'package:aidkriya_walker/screens/walk_summary_screen.dart';
@@ -78,7 +79,9 @@ class _WandererActiveWalkScreenState extends State<WandererActiveWalkScreen> {
   final String _currentUserId = FirebaseAuth.instance.currentUser?.uid ?? '';
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final WalkRequestService _walkService = WalkRequestService();
-  bool _isNavigating = false; // Prevents double navigation attempts
+
+  // [MODIFIED] Only one bool needed
+  bool _isCancelling = false;
 
   // Live Walker Location State
   StreamSubscription<DatabaseEvent>? _walkerLocationSubscription;
@@ -138,21 +141,7 @@ class _WandererActiveWalkScreenState extends State<WandererActiveWalkScreen> {
     }
   }
 
-
-  Future<void> _clearActiveWalkId() async {
-    if (_currentUserId.isNotEmpty) {
-      try {
-        await _firestore
-            .collection('users')
-            .doc(_currentUserId)
-            .update({'activeWalkId': FieldValue.delete()});
-        debugPrint(
-            "[WandererActiveWalkScreen] Successfully Cleared activeWalkId for user $_currentUserId");
-      } catch (e) {
-        debugPrint("[WandererActiveWalkScreen] Error clearing activeWalkId: $e");
-      }
-    }
-  }
+  // [REMOVED] _clearActiveWalkId - This is now handled by the service
 
   // Launch Emergency Call
   Future<void> _launchEmergencyCall() async {
@@ -169,56 +158,7 @@ class _WandererActiveWalkScreenState extends State<WandererActiveWalkScreen> {
     }
   }
 
-  // --- Navigation Logic (unchanged) ---
-  void _navigateToSummaryOrFindWalker({
-    required BuildContext context,
-    required Map<String, dynamic> walkData,
-    required String status,
-    required Map<String, dynamic> finalStats,
-  }) async {
-    if (!mounted || _isNavigating) {
-      debugPrint("[WandererActiveWalkScreen] Navigation prevented: mounted=$mounted, _isNavigating=$_isNavigating");
-      return;
-    }
-    setState(() => _isNavigating = true);
-
-    final Map<String, dynamic> recipientInfo = walkData['recipientInfo'] ?? {};
-    final String walkerName = recipientInfo['fullName'] ?? 'Walker';
-    final String? walkerImageUrl = recipientInfo['imageUrl'];
-    final String? walkerBio = recipientInfo['bio'];
-    final distance = (finalStats['finalDistanceKm'] as num?)?.toInt() ?? 0;
-
-    final IncomingRequestDisplay displayData = IncomingRequestDisplay(
-      walkId: widget.walkId,
-      senderId: walkData['senderId'] ?? '',
-      recipientId: walkData['recipientId'] ?? '',
-      senderName: walkerName,
-      senderImageUrl: walkerImageUrl,
-      senderBio: walkerBio,
-      date: walkData['date'] ?? '',
-      time: walkData['time'] ?? '',
-      duration: walkData['duration'] ?? '',
-      latitude: (walkData['latitude'] as num?)?.toDouble() ?? 0.0,
-      longitude: (walkData['longitude'] as num?)?.toDouble() ?? 0.0,
-      status: status,
-      distance: distance,
-      notes: walkData['notes'],
-    );
-
-    await _clearActiveWalkId();
-
-    if (!mounted) return;
-
-    debugPrint("[WandererActiveWalkScreen] Navigation to WalkSummaryScreen commencing...");
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(
-        builder: (context) => WalkSummaryScreen(
-          walkData: displayData,
-          finalStats: finalStats,
-        ),
-      ),
-    );
-  }
+  // [REMOVED] _navigateToSummaryOrFindWalker - This is now handled by HomeScreen
 
   // --- Chat Navigation ---
   void _onMessageTapped(Map<String, dynamic> walkData) {
@@ -243,45 +183,22 @@ class _WandererActiveWalkScreenState extends State<WandererActiveWalkScreen> {
       stream: _firestore.collection('accepted_walks').doc(widget.walkId).snapshots(),
       builder: (context, snapshot) {
 
-        if (snapshot.connectionState == ConnectionState.waiting && !_isNavigating) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(body: Center(child: CircularProgressIndicator()));
         }
-        if (_isNavigating) {
-          return const Scaffold(body: Center(child: CircularProgressIndicator( semanticsLabel: "Navigating...",)));
-        }
 
+        // [MODIFIED] If this screen is open and the doc is gone,
+        // it means the walk was cancelled/ended and HomeScreen is
+        // already handling navigation. Just show a loader.
         if (!snapshot.hasData || !snapshot.data!.exists || snapshot.hasError) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            _clearActiveWalkId();
-            if(mounted) {
-              Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (context) => const FindWalkerScreen()));
-            }
-          });
           return const Scaffold(body: Center(child: Text("Walk session not found.")));
         }
 
         // --- Data Processing ---
         final walkData = snapshot.data!.data() as Map<String, dynamic>;
         final currentStatus = walkData['status'] as String? ?? 'Accepted';
-        final finalStats = walkData['finalStats'] as Map<String, dynamic>?;
 
-        // --- Summary Navigation Check ---
-        if ((currentStatus == 'Completed' || currentStatus.contains('Cancelled')) && finalStats != null) {
-          if (!_isNavigating) {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              _navigateToSummaryOrFindWalker(
-                context: context,
-                walkData: walkData,
-                status: currentStatus,
-                finalStats: finalStats,
-              );
-            });
-          }
-          return const Scaffold(body: Center(child: CircularProgressIndicator( semanticsLabel: "Navigating to Summary...",)));
-        }
-        if ((currentStatus == 'Completed' || currentStatus.contains('Cancelled')) && finalStats == null) {
-          return const Scaffold(body: Center(child: Text("Finalizing Walk Data...")));
-        }
+        // [REMOVED] Summary Navigation Check. HomeScreen handles this.
 
         // --- Build Active UI ---
         final isWalkStarted = currentStatus == 'Started';
@@ -383,8 +300,14 @@ class _WandererActiveWalkScreenState extends State<WandererActiveWalkScreen> {
                             ),
                             // Spacer to separate buttons, ensuring Cancel is clearly visible
                             const SizedBox(width: 20),
-                            TextButton.icon(
-                              onPressed: _isNavigating ? null : () => _showCancelConfirmation(context, walkData),
+                            // [MODIFIED] Show loader when cancelling
+                            _isCancelling
+                                ? const Padding(
+                              padding: EdgeInsets.all(8.0),
+                              child: CircularProgressIndicator(),
+                            )
+                                : TextButton.icon(
+                              onPressed: () => _showCancelConfirmation(context, walkData),
                               icon: const Icon(Icons.cancel, color: Colors.red),
                               label: const Text("Cancel", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
                             ),
@@ -459,6 +382,9 @@ class _WandererActiveWalkScreenState extends State<WandererActiveWalkScreen> {
 
   // Uses unified backend service now
   Future<void> _endWalkAsWanderer(Map<String, dynamic> walkData) async {
+    // [MODIFIED] Set loading state
+    if (_isCancelling) return;
+    setState(() => _isCancelling = true);
 
     double elapsedMinutes = 0.0;
     if (walkData['status'] == 'Started') {
@@ -469,23 +395,28 @@ class _WandererActiveWalkScreenState extends State<WandererActiveWalkScreen> {
     }
     try {
       final double scheduledDurationMinutes = double.tryParse(walkData['duration'].toString().split(' ')[0]) ?? 30.0;
-      final double agreedRatePerHour = 100.0; // Mock rate
 
       if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Finalizing cancellation...")));
 
-      // Call the unified endWalk service method
+      // [MODIFIED] Only call the service. HomeScreen listener handles navigation.
       await _walkService.endWalk(
-          walkId: widget.walkId, userIdEnding: _currentUserId, isWalker: false,
-          scheduledDurationMinutes: scheduledDurationMinutes, elapsedMinutes: elapsedMinutes,
-          agreedRatePerHour: agreedRatePerHour, finalDistanceKm: 0.0
+          walkId: widget.walkId,
+          userIdEnding: _currentUserId,
+          isWalker: false,
+          scheduledDurationMinutes: scheduledDurationMinutes,
+          elapsedMinutes: elapsedMinutes,
+          finalDistanceKm: 0.0
       );
-      // The StreamBuilder will detect the change and navigate automatically
 
-    } catch (e) {
+    } catch (e, stackTrace) { // [FIXED] Added stackTrace variable
       debugPrint("Error ending walk as Wanderer: $e");
+      debugPrint(stackTrace.toString());
       if(mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to cancel walk: $e')));
+        // [MODIFIED] Reset loading state on error
+        setState(() => _isCancelling = false);
       }
     }
+    // [REMOVED] No 'finally' block needed, state is handled
   }
 }

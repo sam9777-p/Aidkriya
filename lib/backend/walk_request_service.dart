@@ -1,3 +1,6 @@
+// lib/backend/walk_request_service.dart
+// (No changes to imports or _calculateFare)
+
 import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -6,19 +9,42 @@ import 'package:http/http.dart' as http;
 
 import '../model/walk_request.dart';
 
-/// Utility function to calculate the final fare based on duration.
+// [NEW CONSTANTS FOR DYNAMIC PRICING MODEL]
+const double _BASE_FARE = 10.0; // Fixed starting price
+const double _RATE_PER_MINUTE = 2.0; // ₹2.00 per minute
+const double _RATE_PER_KM = 5.0; // ₹5.00 per kilometer
+const double _MINIMUM_CHARGE = 30.0; // Minimum charge for any walk (non-cancelled by Walker)
+
+/// Utility function to calculate the final fare based on a dynamic model.
+/// Fare is calculated based on distance, time, and minimum charge.
 double _calculateFare({
   required double scheduledDurationMinutes,
   required double elapsedMinutes,
-  required double agreedRatePerHour,
+  required double finalDistanceKm,
+  required String status, // Pass status for cancellation logic
 }) {
-  if (elapsedMinutes >= scheduledDurationMinutes) {
-    return (scheduledDurationMinutes / 60.0) * agreedRatePerHour;
+  // If Walker cancels, charge is always 0.0
+  if (status == 'CancelledByWalker') {
+    return 0.0;
   }
-  if (elapsedMinutes > 0 && elapsedMinutes < scheduledDurationMinutes) {
-    return (elapsedMinutes / 60.0) * agreedRatePerHour;
+
+  // Calculate raw time-based fare. Time is capped at scheduled duration.
+  // In a real system, you might cap at scheduled + grace period.
+  final billableMinutes = elapsedMinutes.clamp(0.0, scheduledDurationMinutes);
+  final timeFare = billableMinutes * _RATE_PER_MINUTE;
+
+  // Calculate distance-based fare
+  final distanceFare = finalDistanceKm * _RATE_PER_KM;
+
+  // Initial Total Fare = Base + Time + Distance
+  double totalFare = _BASE_FARE + timeFare + distanceFare;
+
+  // Apply Minimum Charge
+  if (totalFare < _MINIMUM_CHARGE) {
+    totalFare = _MINIMUM_CHARGE;
   }
-  return 0.0;
+
+  return totalFare;
 }
 
 class WalkRequestService {
@@ -33,9 +59,9 @@ class WalkRequestService {
       .collection('users');
 
   // 🔥 Replace this with your deployed backend URL
-  final String _serverUrl = "https://aid-backend-1.onrender.com/api/sendNotification";
+  final String _serverUrl = "http://172.22.72.110:3000/api/sendNotification";
 
-  final String _scheduleUrl = "https://aid-backend-1.onrender.com/api/schedule-walk";
+  final String _scheduleUrl = "http://172.22.72.110:3000/api/schedule-walk";
   // -------------------- Helper to trigger FCM via backend --------------------
   Future<void> _triggerNotification({
     required String recipientId,
@@ -147,32 +173,32 @@ class WalkRequestService {
     );
     return _requestsCollection
         .where('recipientId', isEqualTo: walkerId)
-        // [MODIFIED] Query for both statuses
+    // [MODIFIED] Query for both statuses
         .where('status', whereIn: ['Pending', 'Scheduled'])
         .snapshots()
         .map((snapshot) {
-          final requests = snapshot.docs
-              .map(
-                (doc) => WalkRequest.fromMap(
-                  doc.data() as Map<String, dynamic>,
-                  doc.id,
-                ),
-              )
-              .toList();
+      final requests = snapshot.docs
+          .map(
+            (doc) => WalkRequest.fromMap(
+          doc.data() as Map<String, dynamic>,
+          doc.id,
+        ),
+      )
+          .toList();
 
-          requests.sort((a, b) {
-            final aTime = a.createdAt ?? DateTime(2000);
-            final bTime = b.createdAt ?? DateTime(2000);
-            return bTime.compareTo(aTime);
-          });
-          return requests;
-        })
+      requests.sort((a, b) {
+        final aTime = a.createdAt ?? DateTime(2000);
+        final bTime = b.createdAt ?? DateTime(2000);
+        return bTime.compareTo(aTime);
+      });
+      return requests;
+    })
         .handleError((error) {
-          debugPrint(
-            "[WalkRequestService] Error fetching pending requests: $error",
-          );
-          return <WalkRequest>[];
-        });
+      debugPrint(
+        "[WalkRequestService] Error fetching pending requests: $error",
+      );
+      return <WalkRequest>[];
+    });
   }
 
   /// ------------------ ACCEPT REQUEST (FIXED VERSION) ------------------
@@ -204,7 +230,7 @@ class WalkRequestService {
 
       debugPrint("[WalkRequestService] ✅ Request document found");
       Map<String, dynamic> acceptedRequestData =
-          requestDoc.data() as Map<String, dynamic>;
+      requestDoc.data() as Map<String, dynamic>;
       debugPrint(
         "[WalkRequestService] Request data: ${acceptedRequestData.toString().substring(0, 200)}...",
       );
@@ -352,21 +378,21 @@ class WalkRequestService {
         try {
           final response = await http
               .post(
-                Uri.parse(_scheduleUrl),
-                headers: {'Content-Type': 'application/json'},
-                body: jsonEncode({
-                  'walkId': walkId,
-                  'senderId': senderId,
-                  'recipientId': recipientId,
-                  'scheduledTimestampISO': scheduledDateTime.toIso8601String(),
-                }),
-              )
+            Uri.parse(_scheduleUrl),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'walkId': walkId,
+              'senderId': senderId,
+              'recipientId': recipientId,
+              'scheduledTimestampISO': scheduledDateTime.toIso8601String(),
+            }),
+          )
               .timeout(
-                const Duration(seconds: 10),
-                onTimeout: () {
-                  throw Exception("Backend request timed out after 10 seconds");
-                },
-              );
+            const Duration(seconds: 10),
+            onTimeout: () {
+              throw Exception("Backend request timed out after 10 seconds");
+            },
+          );
 
           debugPrint(
             "[WalkRequestService] Backend response status: ${response.statusCode}",
@@ -389,6 +415,7 @@ class WalkRequestService {
           debugPrint("[WalkRequestService] ❌ ERROR calling backend scheduler");
           debugPrint("[WalkRequestService] Error type: ${e.runtimeType}");
           debugPrint("[WalkRequestService] Error message: $e");
+          debugPrint("[WalkRequestService] Stack trace:");
           debugPrint("========================================");
 
           // Rollback: Delete the accepted walk since scheduling failed
@@ -504,7 +531,7 @@ class WalkRequestService {
     required bool isWalker,
     required double scheduledDurationMinutes,
     required double elapsedMinutes,
-    required double agreedRatePerHour,
+    // [REMOVED] required double agreedRatePerHour,
     required double finalDistanceKm,
   }) async {
     debugPrint(
@@ -518,27 +545,25 @@ class WalkRequestService {
 
     if (isWalker && elapsedMinutes < scheduledDurationMinutes) {
       status = 'CancelledByWalker';
-      amountDue = 0.0;
     } else if (!isWalker && elapsedMinutes < scheduledDurationMinutes) {
       status = 'CancelledByWanderer';
-      amountDue = _calculateFare(
-        scheduledDurationMinutes: scheduledDurationMinutes,
-        elapsedMinutes: elapsedMinutes,
-        agreedRatePerHour: agreedRatePerHour,
-      );
     } else {
       status = 'Completed';
-      amountDue = _calculateFare(
-        scheduledDurationMinutes: scheduledDurationMinutes,
-        elapsedMinutes: scheduledDurationMinutes,
-        agreedRatePerHour: agreedRatePerHour,
-      );
     }
+
+    // [MODIFIED] Call new calculation function
+    amountDue = _calculateFare(
+      scheduledDurationMinutes: scheduledDurationMinutes,
+      elapsedMinutes: elapsedMinutes,
+      finalDistanceKm: finalDistanceKm,
+      status: status, // Pass status for internal logic
+    );
 
     final finalStatsData = {
       'elapsedMinutes': elapsedMinutes.round(),
       'finalDistanceKm': double.parse(finalDistanceKm.toStringAsFixed(1)),
       'amountDue': double.parse(amountDue.toStringAsFixed(2)),
+      'status': status, // <-- [ADDED THIS LINE]
     };
 
     // include a summaryAvailable flag so clients know summary is ready
@@ -675,7 +700,7 @@ class WalkRequestService {
         .orderBy('timestamp', descending: false)
         .snapshots()
         .map((snapshot) {
-          return snapshot.docs.map((doc) => doc.data()).toList();
-        });
+      return snapshot.docs.map((doc) => doc.data()).toList();
+    });
   }
 }
