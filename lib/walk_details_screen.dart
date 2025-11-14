@@ -1,409 +1,369 @@
-import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
+import 'screens/chat_screen.dart';
 
-class WalkDetailsScreen extends StatelessWidget {
+class WalkDetailsScreen extends StatefulWidget {
   final String walkId;
+  const WalkDetailsScreen({Key? key, required this.walkId}) : super(key: key);
 
-  const WalkDetailsScreen({super.key, required this.walkId});
+  @override
+  State<WalkDetailsScreen> createState() => _WalkDetailsScreenState();
+}
+
+class _WalkDetailsScreenState extends State<WalkDetailsScreen> {
+  String? otherUserId;
 
   @override
   Widget build(BuildContext context) {
-    final currentUid = FirebaseAuth.instance.currentUser?.uid;
+    final Color primaryGreen = const Color(0xFFB5DDB8);
 
     return Scaffold(
-      backgroundColor: Theme.of(context).brightness == Brightness.dark
-          ? const Color(0xFF0F1412)
-          : const Color(0xFFF9F9F9),
+      extendBodyBehindAppBar: true,
+      backgroundColor: Colors.grey.shade100,
       appBar: AppBar(
-        elevation: 0,
         backgroundColor: Colors.transparent,
-        foregroundColor:
-        Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black87,
-        title: const Text('Walk Details'),
+        elevation: 0,
+        title: const Text(
+          'Walk Details',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 20,
+            letterSpacing: 0.3,
+          ),
+        ),
         centerTitle: true,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.share),
-            onPressed: () => {},
-          )
-        ],
       ),
-      body: StreamBuilder<DocumentSnapshot>(
-        stream: FirebaseFirestore.instance.collection('accepted_walks').doc(walkId).snapshots(),
-        builder: (context, snap) {
-          if (snap.hasError) {
-            return Center(child: Text('Error: ${snap.error}'));
-          }
-          if (!snap.hasData) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          final doc = snap.data!;
-          if (!doc.exists) return const Center(child: Text('Walk not found'));
 
-          final data = doc.data() as Map<String, dynamic>;
+      body: Stack(
+        children: [
+          // Background gradient
+          Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  primaryGreen.withOpacity(0.15),
+                  Colors.white,
+                ],
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+              ),
+            ),
+          ),
 
-          final duration = data['duration'] ?? '';
-          final walkerProfile = data['walkerProfile'] as Map<String, dynamic>? ?? {};
-          final distance = walkerProfile['distance'] ?? '';
-          final status = data['status'] ?? '';
-          final updatedAtTs = data['updatedAt'];
-          DateTime? updatedAt;
-          if (updatedAtTs is Timestamp) updatedAt = updatedAtTs.toDate();
-          else if (updatedAtTs is int) updatedAt = DateTime.fromMillisecondsSinceEpoch(updatedAtTs);
-          else if (updatedAtTs is String) {
-            try {
-              updatedAt = DateTime.parse(updatedAtTs);
-            } catch (_) {
-              updatedAt = null;
-            }
-          }
+          // Foreground content
+          StreamBuilder<DocumentSnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('accepted_walks')
+                .doc(widget.walkId)
+                .snapshots(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
 
-          final recipientId = data['recipientId'] as String?;
-          final senderId = data['senderId'] as String?;
+              if (!snapshot.hasData || !snapshot.data!.exists) {
+                return const Center(
+                    child: Text('Walk not found',
+                        style: TextStyle(fontSize: 16)));
+              }
 
-          String? otherUserId;
-          if (currentUid != null) {
-            if (recipientId != null && recipientId != currentUid) {
-              otherUserId = recipientId;
-            } else if (senderId != null && senderId != currentUid)
-            {
-              otherUserId = senderId;
-            }
-          } else {
-            otherUserId = recipientId ?? senderId;
-          }
+              final walkData = snapshot.data!.data() as Map<String, dynamic>;
+              final currentUserId = FirebaseAuth.instance.currentUser!.uid;
 
-          return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12),
-            child: LayoutBuilder(builder: (context, constraints) {
-              final width = constraints.maxWidth;
-              final isWide = width > 420;
+              // Determine the other participant
+              final senderId = walkData['senderId'];
+              final recipientId = walkData['recipientId'];
+              if (currentUserId == senderId) {
+                otherUserId = recipientId;
+              } else {
+                otherUserId = senderId;
+              }
+
+              final walkStatus = walkData['status'] ?? 'unknown';
+              final duration = walkData['duration'] ?? '';
+              final distance =
+              (walkData['walkerProfile']?['distance'] ?? 0).toString();
+              final updatedAt = walkData['updatedAt'] != null
+                  ? (walkData['updatedAt'] as Timestamp).toDate()
+                  : null;
 
               return SingleChildScrollView(
+                padding:
+                const EdgeInsets.only(left: 16, right: 16, top: 110, bottom: 120),
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
+                    // Walk info card
+                    _buildWalkInfoCard(walkStatus, duration, distance, updatedAt),
 
-                    Container(
-                      width: double.infinity,
-                      height: isWide ? 220 : 180,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(18),
-                        gradient: LinearGradient(
-                          colors: [
-                            Theme.of(context).brightness == Brightness.dark
-                                ? Colors.green.shade900
-                                : Colors.green.shade200,
-                            Theme.of(context).brightness == Brightness.dark
-                                ? Colors.black
-                                : Colors.white,
-                          ],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.08),
-                            blurRadius: 12,
-                            offset: const Offset(0, 6),
-                          )
-                        ],
-                      ),
-                      padding: const EdgeInsets.all(16),
-                      child: Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(10),
+                    const SizedBox(height: 25),
+
+                    // Walker details section
+                    if (otherUserId != null)
+                      StreamBuilder<DocumentSnapshot>(
+                        stream: FirebaseFirestore.instance
+                            .collection('users')
+                            .doc(otherUserId)
+                            .snapshots(),
+                        builder: (context, userSnapshot) {
+                          if (userSnapshot.connectionState ==
+                              ConnectionState.waiting) {
+                            return const Center(
+                                child: CircularProgressIndicator());
+                          }
+                          if (!userSnapshot.hasData ||
+                              !userSnapshot.data!.exists) {
+                            return const Text("Walker details not found.");
+                          }
+
+                          final userData = userSnapshot.data!.data()
+                          as Map<String, dynamic>;
+
+                          final fullName = userData['fullName'] ?? 'Unknown';
+                          final email = userData['email'] ?? '';
+                          final phone = userData['phone'] ?? '';
+                          final city = userData['city'] ?? '';
+                          final bio = userData['bio'] ?? '';
+                          final role = userData['role'] ?? '';
+                          final profilePic = userData['photoUrl'] ??
+                              userData['imageUrl'] ??
+                              '';
+
+                          return AnimatedContainer(
+                            duration: const Duration(milliseconds: 400),
+                            curve: Curves.easeInOut,
                             decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.12),
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(
-                              Icons.directions_walk,
-                              size: 48,
                               color: Colors.white,
-                            ),
-                          ),
-                          const SizedBox(width: 14),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Text(
-                                  'Walk Summary',
-                                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                                    fontWeight: FontWeight.w700,
-                                    color: Theme.of(context).brightness == Brightness.dark
-                                        ? Colors.white
-                                        : Colors.black87,
-                                  ),
+                              borderRadius: BorderRadius.circular(20),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.green.shade100.withOpacity(0.5),
+                                  blurRadius: 12,
+                                  offset: const Offset(0, 6),
                                 ),
-                                const SizedBox(height: 6),
-                                Text(
-                                  status.toString().isNotEmpty ? 'Status: $status' : 'Status: —',
-                                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                    color: Theme.of(context).brightness == Brightness.dark
-                                        ? Colors.white70
-                                        : Colors.black54,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                if (updatedAt != null)
-                                  Text(
-                                    'Updated ${DateFormat.yMMMd().add_jm().format(updatedAt)}',
-                                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                      color: Theme.of(context).brightness == Brightness.dark
-                                          ? Colors.white60
-                                          : Colors.black45,
-                                    ),
-                                  ),
                               ],
                             ),
-                          )
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-
-                    Wrap(
-                      spacing: 12,
-                      runSpacing: 12,
-                      children: [
-                        _StatCard(
-                          icon: Icons.map,
-                          label: 'Distance',
-                          value: distance.toString().isNotEmpty ? '$distance km' : '—',
-                          width: (width - 44) / 2,
-                        ),
-                        _StatCard(
-                          icon: Icons.timer,
-                          label: 'Duration',
-                          value: duration.toString().isNotEmpty ? duration.toString() : '—',
-                          width: (width - 44) / 2,
-                        ),
-                        _StatCard(
-                          icon: Icons.info_outline,
-                          label: 'Status',
-                          value: status.toString().isNotEmpty ? status.toString() : '—',
-                          width: width - 32,
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 14),
-
-                    Card(
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      elevation: 1,
-                      child: Padding(
-                        padding: const EdgeInsets.all(14),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'You walked with',
-                              style: TextStyle(fontSize: 13, color: Colors.grey),
-                            ),
-                            const SizedBox(height: 10),
-                            if (otherUserId == null)
-                              const Text('No participant info available')
-                            else
-                              StreamBuilder<DocumentSnapshot>(
-                                stream: FirebaseFirestore.instance.collection('users').doc(otherUserId).snapshots(),
-                                builder: (ctx, userSnap) {
-                                  if (userSnap.hasError) {
-                                    return Text('Error: ${userSnap.error}');
-                                  }
-                                  if (!userSnap.hasData) {
-                                    return const SizedBox(
-                                      height: 64,
-                                      child: Center(child: CircularProgressIndicator()),
-                                    );
-                                  }
-                                  final udoc = userSnap.data!;
-                                  if (!udoc.exists) {
-                                    return const Text('Participant profile not found');
-                                  }
-                                  final udata = udoc.data() as Map<String, dynamic>? ?? {};
-                                  final displayName = udata['displayName'] ?? udata['name'] ?? 'Unnamed';
-                                  final role = udata['role'] ?? '';
-                                  final photoUrl = udata['photoUrl'] ?? udata['avatarUrl'] ?? '';
-
-                                  return Row(
-                                    children: [
-                                      CircleAvatar(
-                                        radius: 30,
-                                        backgroundColor: Colors.grey.shade200,
-                                        child: photoUrl.toString().isNotEmpty
-                                            ? ClipOval(
-                                          child: CachedNetworkImage(
-                                            imageUrl: photoUrl.toString(),
-                                            width: 56,
-                                            height: 56,
-                                            fit: BoxFit.cover,
-                                            placeholder: (c, s) => const CircularProgressIndicator(strokeWidth: 2),
-                                            errorWidget: (c, s, e) => const Icon(Icons.person, size: 32),
-                                          ),
-                                        )
-                                            : const Icon(Icons.person, size: 32),
-                                      ),
-                                      const SizedBox(width: 12),
-                                      Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            displayName.toString(),
-                                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
-                                          ),
-                                          const SizedBox(height: 4),
-                                          Text(
-                                            role.toString(),
-                                            style: const TextStyle(color: Colors.grey),
-                                          ),
-                                        ],
-                                      ),
-                                      const Spacer(),
-                                      IconButton(
-                                        onPressed: () {
-
-                                        },
-                                        icon: const Icon(Icons.chevron_right),
-                                      )
-                                    ],
-                                  );
-                                },
-                              ),
-                          ],
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 14),
-
-                    Card(
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      elevation: 0,
-                      color: Theme.of(context).brightness == Brightness.dark ? Colors.grey[900] : Colors.white,
-                      child: Padding(
-                        padding: const EdgeInsets.all(14),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.calendar_month, size: 28),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    updatedAt != null
-                                        ? DateFormat.yMMMMd().format(updatedAt)
-                                        : 'Date not available',
-                                    style: const TextStyle(fontWeight: FontWeight.w600),
+                            padding: const EdgeInsets.all(18),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                const Text(
+                                  "Walk Partner Details",
+                                  style: TextStyle(
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.bold,
                                   ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    updatedAt != null
-                                        ? DateFormat.jm().format(updatedAt)
-                                        : '',
-                                    style: const TextStyle(color: Colors.grey),
+                                ),
+                                const SizedBox(height: 15),
+                                CircleAvatar(
+                                  radius: 45,
+                                  backgroundColor: Colors.green.shade50,
+                                  backgroundImage: profilePic.isNotEmpty
+                                      ? NetworkImage(profilePic)
+                                      : null,
+                                  child: profilePic.isEmpty
+                                      ? const Icon(Icons.person,
+                                      size: 45, color: Colors.grey)
+                                      : null,
+                                ),
+                                const SizedBox(height: 12),
+                                Text(
+                                  fullName,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 18,
                                   ),
-                                ],
-                              ),
+                                ),
+                                const SizedBox(height: 5),
+                                Text(
+                                  role.toString(),
+                                  style: TextStyle(
+                                    color: Colors.green.shade700,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                                const Divider(height: 24, thickness: 1),
+                                _detailRow(Icons.email_outlined, "Email", email),
+                                _detailRow(Icons.phone, "Phone", phone),
+                                _detailRow(Icons.location_on_outlined, "City", city),
+                                if (bio.toString().isNotEmpty)
+                                  _detailRow(Icons.info_outline, "Bio", bio),
+                              ],
                             ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                              decoration: BoxDecoration(
-                                color: Theme.of(context).brightness == Brightness.dark
-                                    ? Colors.green.shade800.withOpacity(0.12)
-                                    : Colors.green.shade50,
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.end,
-                                children: const [
-                                  Text('Contribution', style: TextStyle(fontSize: 12)),
-                                  SizedBox(height: 6),
-                                  Text('\$2.50', style: TextStyle(fontWeight: FontWeight.bold)),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 30),
+                          );
+                        },
+                      )
+                    else
+                      const Text("Unable to load walker details."),
                   ],
                 ),
               );
-            }),
-          );
-        },
+            },
+          ),
+        ],
       ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: 1,
-        showSelectedLabels: true,
-        showUnselectedLabels: true,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
-          BottomNavigationBarItem(icon: Icon(Icons.directions_walk), label: 'Walks'),
-          BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
+
+      // Bottom “Message” button
+      bottomSheet: Container(
+        color: Colors.white,
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+        child: SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: ElevatedButton.icon(
+            icon: const Icon(Icons.message, color: Colors.white),
+            label: const Text(
+              'Message',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF61CF63),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+              elevation: 5,
+            ),
+            onPressed: () {
+              if (otherUserId != null) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => ChatScreen(
+                      walkId: widget.walkId,
+                      partnerId: otherUserId!,
+                      partnerName: 'Chat',
+                    ),
+                  ),
+                );
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                      content: Text('Chat partner not available right now')),
+                );
+              }
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  // -------------------
+  // UI Helper Components
+  // -------------------
+
+  Widget _buildWalkInfoCard(
+      String status, String duration, String distance, DateTime? updatedAt) {
+    Color statusColor;
+    Color textColor;
+
+    switch (status) {
+      case 'completed':
+        statusColor = Colors.green.shade100;
+        textColor = Colors.green.shade700;
+        break;
+      case 'cancelled':
+        statusColor = Colors.red.shade100;
+        textColor = Colors.red.shade700;
+        break;
+      default:
+        statusColor = Colors.orange.shade100;
+        textColor = Colors.orange.shade700;
+    }
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 500),
+      curve: Curves.easeOutCubic,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.green.shade100.withOpacity(0.5),
+            blurRadius: 12,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.all(18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Container(
+                padding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: statusColor,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  status.toUpperCase(),
+                  style: TextStyle(
+                    color: textColor,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              const Icon(Icons.directions_walk_rounded,
+                  color: Colors.green, size: 28),
+            ],
+          ),
+          const SizedBox(height: 10),
+          _infoRow(Icons.timer_outlined, 'Duration', duration),
+          _infoRow(Icons.route_outlined, 'Distance', '$distance km'),
+          if (updatedAt != null)
+            _infoRow(Icons.update, 'Updated',
+                '${updatedAt.toLocal().toString().substring(0, 16)}'),
         ],
       ),
     );
   }
-}
 
-class _StatCard extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String value;
-  final double width;
-
-  const _StatCard({
-    Key? key,
-    required this.icon,
-    required this.label,
-    required this.value,
-    required this.width,
-  }) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      width: width,
-      constraints: const BoxConstraints(minHeight: 92),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: isDark ? Colors.grey[900] : Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            offset: const Offset(0, 6),
-            blurRadius: 14,
-          )
-        ],
-      ),
+  Widget _infoRow(IconData icon, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4.0),
       child: Row(
         children: [
-          CircleAvatar(
-            radius: 20,
-            backgroundColor: isDark ? Colors.green.shade900 : Colors.green.shade50,
-            child: Icon(icon, size: 20, color: isDark ? Colors.white : Colors.green.shade700),
+          Icon(icon, color: Colors.green.shade700, size: 20),
+          const SizedBox(width: 8),
+          Text(
+            '$label: ',
+            style: const TextStyle(
+                fontWeight: FontWeight.w600, color: Colors.black87),
           ),
-          const SizedBox(width: 12),
           Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
-              Text(label, style: const TextStyle(fontSize: 13, color: Colors.grey)),
-              const SizedBox(height: 6),
-              Text(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-            ]),
+            child: Text(
+              value,
+              style: const TextStyle(color: Colors.black54, fontSize: 15),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _detailRow(IconData icon, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      child: Row(
+        children: [
+          Icon(icon, color: Colors.green.shade700, size: 20),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              "$label: $value",
+              style: const TextStyle(fontSize: 15, color: Colors.black87),
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
         ],
       ),

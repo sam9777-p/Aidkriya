@@ -1,5 +1,6 @@
 // lib/walk_history_page.dart
 
+import 'package:aidkriya_walker/walk_details_screen.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -151,11 +152,13 @@ class _WalkHistoryPageState extends State<WalkHistoryPage> {
                 imageUrl: imageUrl,
                 isActive: isActive,
                 messagesCount: messagesCount,
-                onTap: () { // [NEW] Handle tap to navigate to chat
-                  // Only allow chat if there are messages or the walk is active
-                  if (isActive || messagesCount > 0) {
-                    _navigateToChat(walkId, name, partnerId);
-                  }
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => WalkDetailsScreen(walkId: walkId),
+                    ),
+                  );
                 },
               );
             },
