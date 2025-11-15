@@ -3,6 +3,7 @@ import 'dart:async';
 
 import 'package:aidkriya_walker/backend/location_service.dart';
 import 'package:aidkriya_walker/incoming_requests_screen.dart';
+import 'package:aidkriya_walker/payment_screen.dart'; // Ensure this is imported
 import 'package:aidkriya_walker/profile_screen.dart';
 import 'package:aidkriya_walker/screens/walk_active_screen.dart';
 import 'package:aidkriya_walker/social_impact_card.dart';
@@ -18,7 +19,7 @@ import 'backend/pedometer_service.dart';
 import 'find_walker_screen.dart';
 import 'model/incoming_request_display.dart';
 import 'model/user_model.dart';
-import 'screens/walk_summary_screen.dart'; // [NEW] Import Summary Screen
+import 'screens/walk_summary_screen.dart';
 import 'screens/wanderer_active_walk_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -33,6 +34,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final PedometerService _pedometerService = PedometerService();
   int walksCompleted = 12;
   int socialImpact = 250;
+  bool _isSuspiciousDialogOpen = false; // State to manage dialog display
 
   final locationService = LocationService();
   UserModel? _user;
@@ -40,13 +42,8 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isLoading = true;
 
   StreamSubscription<DocumentSnapshot>? _userSubscription;
-
-  // START: New state for walk status management
   StreamSubscription<DocumentSnapshot>? _walkStatusSubscription;
-  String? _activeWalkStatus; // To hold the status (e.g., 'Pending', 'Accepted')
-  // END: New state for walk status management
-
-  // [NEW] Flag to prevent multiple summary navigations
+  String? _activeWalkStatus;
   bool _isCheckingForSummary = false;
 
   @override
@@ -55,9 +52,118 @@ class _HomeScreenState extends State<HomeScreen> {
     _subscribeToUserData();
     _updateFcmToken();
     _pedometerService.init();
+    // No need for post-frame callback, _subscribeToUserData handles the check
+  }
+
+  /// Displays the unremovable dialog when a payment is suspected as fraudulent.
+  void _showSuspiciousDialog(String walkId, double amount) {
+    if (_isSuspiciousDialogOpen) return;
+
+    _isSuspiciousDialogOpen = true;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return WillPopScope(
+          onWillPop: () async => false,
+          child: AlertDialog(
+            title: const Row(
+              children: [
+                Icon(Icons.warning, color: Colors.red),
+                SizedBox(width: 8),
+                Text('Account Suspended', style: TextStyle(color: Colors.red)),
+              ],
+            ),
+            content: const Text(
+              'Your account has been suspended due to an uncompleted payment for a previous walk. Please complete the payment to restore access to the app.',
+            ),
+            actions: <Widget>[
+              TextButton(
+                onPressed: () async {
+                  await _raisePaymentIssueTicket(walkId, amount);
+                  if (mounted) {
+                    Navigator.of(context).pop();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text("✅ Issue reported. Admin will review."),
+                      ),
+                    );
+                    _isSuspiciousDialogOpen = false;
+                  }
+                },
+                child: const Text("I have done payment! Help"),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00E676)),
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  _isSuspiciousDialogOpen = false;
+
+                  // Navigate to PaymentScreen with the actual details
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => PaymentScreen(
+                        amount: amount,
+                        walkId: walkId,
+                      ),
+                    ),
+                  );
+                },
+                child: const Text('Pay Now', style: TextStyle(color: Colors.white)),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  /// Sends a ticket to a new Firestore collection for admin review.
+  Future<void> _raisePaymentIssueTicket(String walkId, double amount) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    await FirebaseFirestore.instance.collection('admin_tickets').add({
+      'userId': user.uid,
+      'userName': _user?.fullName,
+      'walkId': walkId,
+      'amountDue': amount,
+      'issueType': 'Uncompleted Payment Dispute',
+      'status': 'Pending',
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  /// Checks the user model for payment suspicion status and shows/hides the dialog.
+  void _checkForSuspension() {
+    if (!mounted || _isLoading || _user == null) return;
+
+    final bool isSuspicious = _user!.isPaymentSuspicious;
+    final String? walkId = _user!.suspiciousWalkId;
+    final double? amount = _user!.suspiciousAmount;
+
+    // Condition for showing the dialog:
+    // 1. Is a Wanderer
+    // 2. Is marked as suspicious
+    // 3. Has the required walk details
+    // 4. Is not currently in an active walk
+    if (!_isWalker && isSuspicious && walkId != null && walkId.isNotEmpty && amount != null &&
+        (_user?.activeWalkId == null || _user!.activeWalkId!.isEmpty)) {
+
+      _showSuspiciousDialog(walkId, amount);
+
+    } else if (!isSuspicious && _isSuspiciousDialogOpen) {
+      // Condition for dismissing the dialog (e.g., payment succeeded on another device or admin cleared it)
+      // Safely dismiss the dialog if it's currently showing and the suspicion flag is cleared.
+      Navigator.of(context).popUntil((route) => route.isFirst);
+      _isSuspiciousDialogOpen = false;
+      debugPrint("✅ Suspension lifted and dialog dismissed.");
+    }
   }
 
   Future<void> _updateFcmToken() async {
+    // ... (existing implementation)
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) return;
@@ -85,7 +191,6 @@ class _HomeScreenState extends State<HomeScreen> {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
       setState(() => _isLoading = false);
-      // Optionally navigate to login screen if user is null
       return;
     }
 
@@ -100,7 +205,6 @@ class _HomeScreenState extends State<HomeScreen> {
         .listen(
           (doc) async {
         if (doc.exists && mounted) {
-          // Add mounted check here
           final data = doc.data()!;
           final userModel = UserModel.fromMap(data);
 
@@ -111,67 +215,60 @@ class _HomeScreenState extends State<HomeScreen> {
                       userRole.toString() == 'Walker');
 
           final newActiveWalkId = userModel.activeWalkId;
-          final oldActiveWalkId =
-              _user?.activeWalkId; // Check previous value
+          final oldActiveWalkId = _user?.activeWalkId;
 
-          // --- [START OF FIX] ---
-          // Check if a walk has JUST finished
+          // --- [START OF WALK FINISH LOGIC] ---
           if (oldActiveWalkId != null &&
               oldActiveWalkId.isNotEmpty &&
               (newActiveWalkId == null || newActiveWalkId.isEmpty) &&
-              !_isCheckingForSummary) { // Prevent re-entry
+              !_isCheckingForSummary) {
 
             debugPrint("HomeScreen: Detected activeWalkId removed. A walk has finished.");
 
-            // This is the "end of walk" trigger.
-            // We must now check for a summary.
-
-            // First, update the state to stop any active walk UI
             setState(() {
               _user = userModel;
               _isWalker = isWalker;
               _isLoading = false;
-              _isCheckingForSummary = true; // Set lock
+              _isCheckingForSummary = true;
             });
 
-            // Stop listening to the (now old) walk status
+            // Check suspension state immediately
+            _checkForSuspension();
+
             _walkStatusSubscription?.cancel();
             _walkStatusSubscription = null;
             setState(() { _activeWalkStatus = null; });
 
-            // Go fetch the summary data
             await _checkAndNavigateToSummary(oldActiveWalkId, isWalker);
 
             setState(() {
-              _isCheckingForSummary = false; // Release lock
+              _isCheckingForSummary = false;
             });
 
-            // Return *early* to prevent the rest of the listener logic from running
-            // This prevents the race condition.
-            return;
+            return; // Exit early
           }
-          // --- [END OF FIX] ---
+          // --- [END OF WALK FINISH LOGIC] ---
 
-          // This code now only runs if a walk hasn't just finished
+          // This code runs on every update if a walk hasn't just finished
           setState(() {
             _user = userModel;
             _isWalker = isWalker;
             _isLoading = false;
           });
 
+          // [CRITICAL: REAL-TIME SUSPENSION CHECK]
+          _checkForSuspension();
+
           // [MODIFIED] Manage Walk Status Subscription for ANY user
           if (newActiveWalkId != null && newActiveWalkId.isNotEmpty) {
-            // The current walk ID has changed or the subscription is missing/stale
             if (newActiveWalkId != oldActiveWalkId ||
                 _walkStatusSubscription == null) {
               _walkStatusSubscription?.cancel();
               _walkStatusSubscription = null;
               setState(() {
-                _activeWalkStatus =
-                null; // Clear old status while fetching new one
+                _activeWalkStatus = null;
               });
 
-              // Start listening to the accepted_walks document for the status
               _walkStatusSubscription = FirebaseFirestore.instance
                   .collection('accepted_walks')
                   .doc(newActiveWalkId)
@@ -179,7 +276,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   .listen((walkDoc) {
                 if (walkDoc.exists && mounted) {
                   setState(() {
-                    // Update the status
                     _activeWalkStatus =
                     walkDoc.data()?['status'] as String?;
                   });
@@ -187,16 +283,13 @@ class _HomeScreenState extends State<HomeScreen> {
                     'HomeScreen: Walk status updated to: $_activeWalkStatus',
                   );
                 } else if (mounted) {
-                  // Document missing (e.g., cancelled/completed/deleted from active_walks)
                   setState(() {
-                    _activeWalkStatus =
-                    null; // Forces back to default screen
+                    _activeWalkStatus = null;
                   });
                 }
               });
             }
           } else {
-            // User has no active walk ID.
             _walkStatusSubscription?.cancel();
             _walkStatusSubscription = null;
             if (mounted) {
@@ -208,7 +301,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
           // Manage Walker location tracking
           if (_isWalker) {
-            // Check context validity before using it
             if (mounted) await locationService.startTracking(context);
           } else {
             await locationService.stopTracking();
@@ -220,7 +312,6 @@ class _HomeScreenState extends State<HomeScreen> {
         } else if (mounted) {
           setState(() => _isLoading = false);
           debugPrint('HomeScreen: User document does not exist.');
-          // Optionally handle scenario where user doc is deleted (e.g., logout)
         }
       },
       onError: (error) {
@@ -248,7 +339,6 @@ class _HomeScreenState extends State<HomeScreen> {
         final finalStats = walkData['finalStats'] as Map<String, dynamic>? ?? {};
 
         // Reconstruct the display data needed by the summary screen
-        // The summary screen needs the *partner's* info.
         Map<String, dynamic> partnerInfo;
         String partnerName;
         String? partnerImgUrl;
@@ -256,17 +346,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
         // Determine who the partner was
         if (isWalker) {
-          // I am a Walker. My partner was the Sender (Wanderer).
           partnerInfo = walkData['senderInfo'] as Map<String, dynamic>? ?? {};
           partnerName = partnerInfo['fullName'] ?? 'Wanderer';
           partnerImgUrl = partnerInfo['imageUrl'];
-          partnerBio = null; // We don't store Wanderer's bio in the request
+          partnerBio = null;
         } else {
-          // I am a Wanderer. My partner was the Recipient (Walker).
-          // 'recipientInfo' is the denormalized 'walkerProfile'
           partnerInfo = walkData['recipientInfo'] as Map<String, dynamic>? ??
               walkData['walkerProfile'] as Map<String, dynamic>? ?? {};
-          partnerName = partnerInfo['name'] ?? 'Walker'; // Note: 'name' from walkerProfile
+          partnerName = partnerInfo['name'] ?? 'Walker';
           partnerImgUrl = partnerInfo['imageUrl'];
           partnerBio = partnerInfo['bio'];
         }
@@ -275,9 +362,9 @@ class _HomeScreenState extends State<HomeScreen> {
           walkId: oldWalkId,
           senderId: walkData['senderId'] ?? '',
           recipientId: walkData['recipientId'] ?? '',
-          senderName: partnerName, // This is now the PARTNER's name
-          senderImageUrl: partnerImgUrl, // PARTNER's image
-          senderBio: partnerBio, // PARTNER's bio
+          senderName: partnerName,
+          senderImageUrl: partnerImgUrl,
+          senderBio: partnerBio,
           date: walkData['date'] ?? '',
           time: walkData['time'] ?? '',
           duration: walkData['duration'] ?? '',
@@ -302,20 +389,17 @@ class _HomeScreenState extends State<HomeScreen> {
 
       } else {
         debugPrint("HomeScreen: No summary found or doc missing. Just refreshing home.");
-        // No summary, just stay on the (now refreshed) HomeScreen.
-        // The _getCurrentScreen() logic will show the correct default screen.
       }
     } catch (e) {
       debugPrint("HomeScreen: Error checking for summary: $e");
-      // Fallback: just stay on HomeScreen.
     }
   }
 
 
   @override
   void dispose() {
-    _userSubscription?.cancel(); // Cancel the user stream
-    _walkStatusSubscription?.cancel(); // Cancel the walk status stream
+    _userSubscription?.cancel();
+    _walkStatusSubscription?.cancel();
     locationService.stopTracking();
     _pedometerService.dispose();
     super.dispose();
@@ -327,12 +411,19 @@ class _HomeScreenState extends State<HomeScreen> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
     if (_user == null && FirebaseAuth.instance.currentUser != null) {
-      // Still loading or user doc missing but auth exists - show loader
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
     if (FirebaseAuth.instance.currentUser == null) {
-      // No user logged in
       return const Scaffold(body: Center(child: Text("Please log in.")));
+    }
+
+    // [SUSPENSION GUARD]: Prevent building the main UI if suspended and not in a walk.
+    if (!_isWalker && _user!.isPaymentSuspicious && (_user?.activeWalkId == null || _user!.activeWalkId!.isEmpty)) {
+      return const Scaffold(
+        body: Center(
+          child: Text("Account Suspended. Please complete the payment."),
+        ),
+      );
     }
 
     return Scaffold(
@@ -342,30 +433,23 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // This function now uses the live-streamed _user object and _activeWalkStatus
   Widget _getCurrentScreen() {
-    // Ensure _user is not null before accessing properties
     final String? activeWalkId = _user?.activeWalkId;
-    final String? status = _activeWalkStatus; // Use the streamed status
+    final String? status = _activeWalkStatus;
 
     switch (_currentIndex) {
       case 0:
         return _buildHomeContent();
       case 1: // Walks/Requests Tab
         if (!_isWalker) {
-          // User is a Wanderer
-
+          // Wanderer Logic
           if (activeWalkId != null && activeWalkId.isNotEmpty) {
-            // 1. Check if status has loaded and indicates an active walk
             if (status == 'Accepted' || status == 'Started') {
               debugPrint(
                 "HomeScreen: Wanderer has active walk ($activeWalkId) with status $status, showing WandererActiveWalkScreen.",
               );
               return WandererActiveWalkScreen(walkId: activeWalkId);
-            }
-            // 2. Check if status is still loading (status is null)
-            else if (status == null) {
-              // Show a temporary screen while waiting for the status to stream
+            } else if (status == null) {
               debugPrint("HomeScreen: Wanderer waiting for walk status...");
               return const Scaffold(
                 body: Center(
@@ -380,33 +464,19 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               );
             }
-            // 3. Status loaded but is 'Pending' or some other non-active state
-            // (or implicitly null/empty which is covered by the outer check)
-
-            // Fall through to show FindWalkerScreen for 'Pending' or other non-active states.
             debugPrint(
               "HomeScreen: Wanderer has non-active walk ID $activeWalkId with status $status, showing FindWalkerScreen.",
             );
           }
-
-          // 4. No Active Walk ID
           return const FindWalkerScreen();
         } else {
-          // User is a Walker
-          debugPrint(
-            "HomeScreen: User is Walker, showing IncomingRequestsScreen.",
-          );
-          // --- [NEW WALKER LOGIC] ---
-
-          // Check if Walker has an active walk
+          // Walker Logic
           if (activeWalkId != null && activeWalkId.isNotEmpty) {
-            // Check if status is active
             if (status == 'Accepted' || status == 'Started') {
               debugPrint(
                 "HomeScreen: Walker has active walk ($activeWalkId) with status $status, showing WalkActiveScreen.",
               );
 
-              // We must fetch the walk data to pass to WalkActiveScreen
               return FutureBuilder<DocumentSnapshot>(
                 future: FirebaseFirestore.instance
                     .collection('accepted_walks')
@@ -420,15 +490,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       body: Center(child: CircularProgressIndicator()),
                     );
                   }
-                  debugPrint("HomeScreen: walker screen is not working");
                   final data = snapshot.data!.data() as Map<String, dynamic>;
-
-                  // Re-construct the IncomingRequestDisplay object
-                  // The Walker needs to see the SENDER's (Wanderer's) info
                   final senderInfo =
                       data['senderInfo'] as Map<String, dynamic>? ?? {};
-
-                  // [FIX] Get walker profile data for distance
                   final walkerProfile = data['walkerProfile'] as Map<String, dynamic>? ?? {};
 
                   final displayData = IncomingRequestDisplay(
@@ -437,15 +501,14 @@ class _HomeScreenState extends State<HomeScreen> {
                     recipientId: data['recipientId'] ?? '',
                     senderName: senderInfo['fullName'] ?? 'Wanderer',
                     senderImageUrl: senderInfo['imageUrl'],
-                    senderBio:
-                    senderInfo['bio'], // This will be null, which is fine
+                    senderBio: senderInfo['bio'],
                     date: data['date'] ?? '',
                     time: data['time'] ?? '',
                     duration: data['duration'] ?? '',
                     latitude: (data['latitude'] as num?)?.toDouble() ?? 0.0,
                     longitude: (data['longitude'] as num?)?.toDouble() ?? 0.0,
                     status: data['status'] ?? 'Accepted',
-                    distance: (walkerProfile['distance'] as num?)?.toInt() ?? 0, // Use distance from walkerProfile
+                    distance: (walkerProfile['distance'] as num?)?.toInt() ?? 0,
                     notes: data['notes'],
                   );
 
@@ -454,9 +517,6 @@ class _HomeScreenState extends State<HomeScreen> {
               );
             }
           }
-
-          // If no active walk, or status is not 'Accepted'/'Started',
-          // show the normal incoming requests screen.
           debugPrint(
             "HomeScreen: User is Walker, showing IncomingRequestsScreen.",
           );
@@ -469,11 +529,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  // ... rest of the class methods ...
-  // (omitting for brevity, no other changes needed)
-
   Widget _buildHomeContent() {
-    // Ensure _user is not null before building UI dependent on it
     if (_user == null) return const Center(child: Text("Loading user data..."));
 
     return SingleChildScrollView(
@@ -519,7 +575,7 @@ class _HomeScreenState extends State<HomeScreen> {
             backgroundImage:
             _user?.imageUrl != null && _user!.imageUrl!.isNotEmpty
                 ? NetworkImage(_user!.imageUrl!)
-                : null, // Use null if URL is empty or null
+                : null,
             child: (_user?.imageUrl == null || _user!.imageUrl!.isEmpty)
                 ? Icon(Icons.person, color: Colors.grey[600])
                 : null,
@@ -535,7 +591,6 @@ class _HomeScreenState extends State<HomeScreen> {
       children: [
         Expanded(
           child: Text(
-            // Use ?? 'User' as fallback if name is somehow null/empty
             'Welcome, ${_user?.fullName.split(' ').first ?? 'User'} ',
             style: const TextStyle(
               fontSize: 32,
@@ -556,21 +611,18 @@ class _HomeScreenState extends State<HomeScreen> {
     return Row(
       children: [
         Expanded(
-          // --- WRAP THE CARD IN A STREAMBUILDER ---
           child: StreamBuilder<int>(
             stream: _pedometerService.stepsTodayStream,
-            // Use the steps from the user model as the initial value
             initialData: _user?.stepsToday ?? 0,
             builder: (context, snapshot) {
               final steps = snapshot.data ?? _user?.stepsToday ?? 0;
               return StatsCard(
                 title: 'Steps Today',
-                value: steps.toString(), // Use data from stream/model
+                value: steps.toString(),
                 onTap: () => _onStatsCardTap('Steps'),
               );
             },
           ),
-          // --- END ---
         ),
         const SizedBox(width: 16),
         Expanded(
@@ -585,7 +637,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildSocialImpactCard() {
-    // Fetch this from _user?.earnings or another source if needed
     return SocialImpactCard(
       amount: (_user?.earnings ?? socialImpact),
       onTap: _onSocialImpactTap,
@@ -659,29 +710,27 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _navigateToProfile() {
     setState(() {
-      _currentIndex = 2; // Navigate to Profile tab
+      _currentIndex = 2;
     });
   }
 
   void _onStatsCardTap(String type) {
     debugPrint('Stats card tapped: $type');
-    // Potentially navigate to a detailed stats screen
   }
 
   void _onSocialImpactTap() {
     debugPrint('Social impact card tapped');
-    // Potentially navigate to a social impact details screen
   }
 
   void _onFindWalkerPressed() {
     setState(() {
-      _currentIndex = 1; // Navigate to Walks tab (which shows FindWalkerScreen)
+      _currentIndex = 1;
     });
   }
 
   void _onIncomingRequestPressed() {
     setState(() {
-      _currentIndex = 1; // Navigate to Requests tab
+      _currentIndex = 1;
     });
   }
 
@@ -693,11 +742,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _onWalkerOfWeekTap() {
     debugPrint('Walker of the week tapped');
-    // Potentially navigate to the Walker's profile
   }
 
   void _onChallengeTap() {
     debugPrint('Challenge tapped');
-    // Potentially navigate to a challenge details screen
   }
 }

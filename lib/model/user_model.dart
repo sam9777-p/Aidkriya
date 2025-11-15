@@ -14,10 +14,11 @@ class UserModel {
   final int walks;
   final int earnings;
   String? activeWalkId;
-
-  // Fields for Pedometer
+  final bool isPaymentSuspicious;
   final int stepsToday;
-  final Timestamp? lastStepReset; // To track when stepsToday was last reset to 0
+  final Timestamp? lastStepReset;
+  final String? suspiciousWalkId; // The ID of the walk that failed payment
+  final double? suspiciousAmount;
 
   UserModel({
     this.id,
@@ -32,13 +33,13 @@ class UserModel {
     required this.walks,
     required this.earnings,
     this.activeWalkId,
-
-    // Add new fields to constructor
+    this.isPaymentSuspicious = false,
     this.stepsToday = 0,
     this.lastStepReset,
+    this.suspiciousAmount,
+    this.suspiciousWalkId,
   });
 
-  // ✅ Convert a Map (from Firebase or JSON) to UserProfile
   factory UserModel.fromMap(Map<String, dynamic> map) {
     return UserModel(
       id: map['id'] as String?,
@@ -53,6 +54,9 @@ class UserModel {
       walks: (map['walks'] ?? 0).toInt(),
       earnings: (map['earnings'] ?? 0).toInt(),
       activeWalkId: map['activeWalkId'],
+      isPaymentSuspicious: map['isPaymentSuspicious'] as bool? ?? false,
+      suspiciousWalkId: map['suspiciousWalkId'] as String?,
+      suspiciousAmount: (map['suspiciousAmount'] as num?)?.toDouble(),
 
       // Read new fields from map
       stepsToday: (map['stepsToday'] ?? 0).toInt(),
@@ -75,8 +79,9 @@ class UserModel {
       'walks': walks,
       'earnings': earnings,
       'activeWalkId': activeWalkId,
-
-      // Add new fields to map
+      'isPaymentSuspicious': isPaymentSuspicious,
+      'suspiciousWalkId': suspiciousWalkId,
+      'suspiciousAmount': suspiciousAmount,
       'stepsToday': stepsToday,
       'lastStepReset': lastStepReset,
     };

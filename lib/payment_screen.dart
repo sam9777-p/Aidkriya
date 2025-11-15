@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:razorpay_flutter/razorpay_flutter.dart';
 import 'home_screen.dart';
@@ -87,6 +88,30 @@ class _PaymentScreenState extends State<PaymentScreen>
     }
   }
 
+  Future<void> _setPaymentSuspicionStatus(bool isSuspicious, {String? walkId, double? amount}) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    final updateData = <String, dynamic>{
+      'isPaymentSuspicious': isSuspicious,
+    };
+
+    if (isSuspicious) {
+      // Store the details of the walk that caused the suspicion
+      updateData['suspiciousWalkId'] = walkId;
+      updateData['suspiciousAmount'] = amount;
+    } else {
+      // Clear the details upon successful payment
+      updateData['suspiciousWalkId'] = FieldValue.delete();
+      updateData['suspiciousAmount'] = FieldValue.delete();
+    }
+
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .update(updateData);
+  }
+
   Future<void> _handlePaymentSuccess(PaymentSuccessResponse response) async {
     setState(() => _isPaymentDone = true);
 
@@ -97,6 +122,8 @@ class _PaymentScreenState extends State<PaymentScreen>
       'paymentStatus': 'Paid',
       'status': 'Completed',
     });
+
+    await _setPaymentSuspicionStatus(false);
 
     final walkDoc = await FirebaseFirestore.instance
         .collection('accepted_walks')
@@ -114,7 +141,7 @@ class _PaymentScreenState extends State<PaymentScreen>
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("✅ Payment Successful!")),
+        const SnackBar(content: Text("✅ Payment Successful! Redirecting...")),
       );
       Future.delayed(const Duration(seconds: 2), _redirectToHome);
     }
@@ -123,6 +150,7 @@ class _PaymentScreenState extends State<PaymentScreen>
   Future<void> _handlePaymentError(PaymentFailureResponse response) async {
     if (!_isPaymentDone) {
       await _markAsCancelled("UserCancelled");
+      await _setPaymentSuspicionStatus(true, walkId: widget.walkId, amount: widget.amount);
     }
 
     ScaffoldMessenger.of(context).showSnackBar(
@@ -131,6 +159,8 @@ class _PaymentScreenState extends State<PaymentScreen>
       ),
     );
   }
+
+
 
   void _handleExternalWallet(ExternalWalletResponse response) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -144,13 +174,12 @@ class _PaymentScreenState extends State<PaymentScreen>
           .collection('accepted_walks')
           .doc(widget.walkId)
           .update({
-        'paymentStatus': 'Cancelled',
-        'status': 'Cancelled',
+        'paymentStatus': 'Failed',
+        'status': 'Completed-Unpaid',
         'cancelReason': reason,
         'cancelledAt': FieldValue.serverTimestamp(),
       });
-
-      debugPrint("🟡 Payment cancelled ($reason) for walk ${widget.walkId}");
+      debugPrint("🟡 Payment failed ($reason) for walk ${widget.walkId}. User marked as suspicious.");
     } catch (e) {
       debugPrint("Error marking as cancelled: $e");
     }
