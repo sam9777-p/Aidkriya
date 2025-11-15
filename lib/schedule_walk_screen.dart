@@ -1,9 +1,11 @@
 import 'package:aidkriya_walker/backend/walk_request_service.dart';
 import 'package:aidkriya_walker/model/user_model.dart';
+import 'package:aidkriya_walker/screens/location_picker_screen.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart'; // <-- IMPORT THIS
 import 'package:intl/intl.dart';
 
 import 'components/date_chip.dart';
@@ -37,6 +39,7 @@ class _ScheduleWalkScreenState extends State<ScheduleWalkScreen> {
   late List<DateTime> availableDates;
   late List<TimeOfDay> availableTimes;
   Position? _currentPosition;
+  LatLng? _selectedMeetingPoint; // <-- ADD THIS
   DateTime? selectedDate;
   TimeOfDay? selectedTime;
   String selectedDuration = '45 min'; // Default duration
@@ -195,6 +198,10 @@ class _ScheduleWalkScreenState extends State<ScheduleWalkScreen> {
       if (mounted) {
         setState(() {
           _currentPosition = position;
+          // --- [MODIFIED] ---
+          // Set the default meeting point to the user's current location
+          _selectedMeetingPoint = LatLng(position.latitude, position.longitude);
+          // --- [END MODIFIED] ---
           debugPrint(
             "[ScheduleWalkScreen] Current Location obtained: ${position.latitude}, ${position.longitude}",
           );
@@ -224,7 +231,7 @@ class _ScheduleWalkScreenState extends State<ScheduleWalkScreen> {
             const SizedBox(height: 32),
             _buildWalkPreferencesSection(),
             const SizedBox(height: 32),
-            _buildMeetingPointSection(),
+            _buildMeetingPointSection(), // <-- This widget is now updated
             const SizedBox(height: 24),
             _buildSummary(),
             const SizedBox(height: 24),
@@ -433,6 +440,7 @@ class _ScheduleWalkScreenState extends State<ScheduleWalkScreen> {
     );
   }
 
+  // --- [WIDGET MODIFIED] ---
   Widget _buildMeetingPointSection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -444,7 +452,12 @@ class _ScheduleWalkScreenState extends State<ScheduleWalkScreen> {
         const SizedBox(height: 8),
         Container(
           width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          padding: const EdgeInsets.only(
+            left: 16,
+            top: 4,
+            bottom: 4,
+            right: 8,
+          ), // Adjust padding for button
           decoration: BoxDecoration(
             color: Colors.white, // Use white for better contrast
             borderRadius: BorderRadius.circular(12),
@@ -462,22 +475,63 @@ class _ScheduleWalkScreenState extends State<ScheduleWalkScreen> {
               Icon(Icons.location_on, color: Colors.grey[600], size: 20),
               const SizedBox(width: 12),
               Expanded(
-                // Show coordinates if available, otherwise prompt
+                // Show coordinates from _selectedMeetingPoint
                 child: Text(
-                  _currentPosition != null
-                      ? 'Current Location (${_currentPosition!.latitude.toStringAsFixed(4)}, ${_currentPosition!.longitude.toStringAsFixed(4)})'
+                  _selectedMeetingPoint != null
+                      ? 'Lat: ${_selectedMeetingPoint!.latitude.toStringAsFixed(4)}, Lng: ${_selectedMeetingPoint!.longitude.toStringAsFixed(4)}'
                       : 'Fetching location...',
                   style: TextStyle(fontSize: 15, color: Colors.grey[800]),
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              // Optional: Add button to change location later
-              // IconButton(onPressed: () {}, icon: Icon(Icons.edit_location_alt_outlined))
+              // --- ADD THIS BUTTON ---
+              IconButton(
+                icon: const Icon(
+                  Icons.edit_location_alt_outlined,
+                  color: Color(0xFF00E676),
+                ),
+                onPressed: _openLocationPicker,
+                tooltip: 'Change Meeting Point',
+              ),
+              // --- END ADD ---
             ],
           ),
         ),
       ],
     );
+  }
+
+  // --- [NEW FUNCTION] ---
+  /// Opens the location picker screen and updates the meeting point
+  void _openLocationPicker() async {
+    // We need a valid location to center the map
+    if (_currentPosition == null && _selectedMeetingPoint == null) {
+      _showErrorSnackBar("Still fetching your current location...");
+      return;
+    }
+
+    // Use _selectedMeetingPoint as the initial, fallback to _currentPosition
+    final LatLng initialPoint =
+        _selectedMeetingPoint ??
+        LatLng(_currentPosition!.latitude, _currentPosition!.longitude);
+
+    final newLocation = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) =>
+            LocationPickerScreen(initialLocation: initialPoint),
+      ),
+    );
+
+    // After the picker screen returns a location, update the state
+    if (newLocation != null && newLocation is LatLng) {
+      setState(() {
+        _selectedMeetingPoint = newLocation;
+        debugPrint(
+          "[ScheduleWalkScreen] New meeting point selected: $newLocation",
+        );
+      });
+    }
   }
 
   Widget _buildSummary() {
@@ -492,6 +546,12 @@ class _ScheduleWalkScreenState extends State<ScheduleWalkScreen> {
     final timeStr = selectedTime!.format(context);
     final walkerFirstName = selectedWalker!.name?.split(' ').first ?? 'Walker';
 
+    // --- [MODIFIED] ---
+    // Change summary text to reflect custom location
+    final locationText = _selectedMeetingPoint == _currentPosition
+        ? "at your current location"
+        : "at the selected meeting point";
+
     return Container(
       width: double.infinity, // Take full width
       padding: const EdgeInsets.all(16),
@@ -501,23 +561,24 @@ class _ScheduleWalkScreenState extends State<ScheduleWalkScreen> {
         border: Border.all(color: Colors.grey[300]!),
       ),
       child: Text(
-        'You are scheduling a $selectedDuration walk with $walkerFirstName on $dateStr at $timeStr, meeting at your current location.',
+        'You are scheduling a $selectedDuration walk with $walkerFirstName on $dateStr at $timeStr, meeting $locationText.',
         textAlign: TextAlign.center,
         style: TextStyle(fontSize: 14, color: Colors.grey[700], height: 1.4),
       ),
     );
   }
 
+  // --- [MODIFIED] ---
   Widget _buildConfirmButton() {
     return SizedBox(
       width: double.infinity,
       height: 56,
       child: ElevatedButton(
-        // Disable button if loading, not logged in, location missing, or walker not selected
+        // Add _selectedMeetingPoint to the check
         onPressed:
             (_isLoading ||
                 _currentUserId == null ||
-                _currentPosition == null ||
+                _selectedMeetingPoint == null || // <-- ADDED THIS CHECK
                 selectedWalker == null ||
                 _currentUserProfile == null)
             ? null
@@ -561,7 +622,8 @@ class _ScheduleWalkScreenState extends State<ScheduleWalkScreen> {
         selectedWalker == null ||
         selectedDate == null ||
         selectedTime == null ||
-        _currentPosition == null ||
+        _selectedMeetingPoint ==
+            null || // <-- [MODIFIED] Check _selectedMeetingPoint
         _currentUserProfile == null) {
       _showErrorSnackBar(
         'Please ensure all details are selected and location is available.',
@@ -575,6 +637,28 @@ class _ScheduleWalkScreenState extends State<ScheduleWalkScreen> {
     setState(() => _isLoading = true);
 
     try {
+      // --- ⬇️ START: TEMPORARY HARDCODING FOR TESTING ⬇️ ---
+      // This block overrides user selection and schedules the walk for 3 minutes from now.
+      // debugPrint("!!!!!!!!!! -- TESTING OVERRIDE ENABLED -- !!!!!!!!!!");
+      // final DateTime hardcodedDateTime = DateTime.now().add(
+      //   const Duration(minutes: 3),
+      // );
+      // final String hardcodedDuration =
+      //     '45 min'; // Or any duration you want to test
+      //
+      // // Override user-selected values
+      // DateTime combinedDateTime = hardcodedDateTime;
+      // final formattedDate = DateFormat('MMMM d, yyyy').format(combinedDateTime);
+      // final formattedTime = DateFormat('h:mm a').format(combinedDateTime);
+      // final String finalDuration = hardcodedDuration;
+      //
+      // debugPrint("Hardcoded Time: $formattedTime on $formattedDate");
+      // debugPrint("Hardcoded Duration: $finalDuration");
+      // debugPrint("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+      // --- ⬆️ END: TEMPORARY HARDCODING FOR TESTING ⬆️ ---
+
+      // --- ORIGINAL CODE (COMMENTED OUT FOR TESTING) ---
+
       // Create the DateTime object for the scheduled time
       DateTime combinedDateTime = DateTime(
         selectedDate!.year,
@@ -583,17 +667,16 @@ class _ScheduleWalkScreenState extends State<ScheduleWalkScreen> {
         selectedTime!.hour,
         selectedTime!.minute,
       );
-
       // Format date and time for DISPLAY purposes only
       final formattedDate = DateFormat('MMMM d, yyyy').format(combinedDateTime);
       final formattedTime = DateFormat('h:mm a').format(combinedDateTime);
+      final String finalDuration = selectedDuration;
+
+      // --- END ORIGINAL CODE ---
 
       debugPrint("[ScheduleWalkScreen] Scheduled DateTime: $combinedDateTime");
       debugPrint("[ScheduleWalkScreen] Formatted Date: $formattedDate");
       debugPrint("[ScheduleWalkScreen] Formatted Time: $formattedTime");
-      debugPrint(
-        "[ScheduleWalkScreen] ISO String: ${combinedDateTime.toIso8601String()}",
-      );
 
       // ✅ CRITICAL FIX: Use Timestamp.fromDate() for scheduledTimestamp
       final requestData = {
@@ -606,10 +689,14 @@ class _ScheduleWalkScreenState extends State<ScheduleWalkScreen> {
         'walkerProfile': selectedWalker!.toMap(),
         'date': formattedDate, // ✅ Display format
         'time': formattedTime, // ✅ FIXED: Use actual formatted time
-        'duration': selectedDuration,
-        'latitude': _currentPosition!.latitude,
-        'longitude': _currentPosition!.longitude,
-        'status': 'Scheduled',
+        'duration': finalDuration, // Use final (hardcoded or selected) duration
+        // --- [MODIFIED] ---
+        'latitude':
+            _selectedMeetingPoint!.latitude, // <-- Use the chosen meeting point
+        'longitude': _selectedMeetingPoint!
+            .longitude, // <-- Use the chosen meeting point
+        // --- [END MODIFIED] ---
+        'status': 'Scheduled', // <-- This is the logic fix from before
         // ✅ CRITICAL: Store as Timestamp object, NOT string
         'scheduledTimestamp': Timestamp.fromDate(combinedDateTime),
         'notes': null,
@@ -621,7 +708,7 @@ class _ScheduleWalkScreenState extends State<ScheduleWalkScreen> {
         "[ScheduleWalkScreen] Sending request with Timestamp: ${Timestamp.fromDate(combinedDateTime)}",
       );
 
-      // Call the service
+      // Call the service (this logic is from your previous fix, it is correct)
       final String? walkId = await _walkService.sendRequest(requestData);
 
       if (walkId != null) {
