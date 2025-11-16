@@ -19,6 +19,7 @@ class UserModel {
   final Timestamp? lastStepReset;
   final String? suspiciousWalkId; // The ID of the walk that failed payment
   final double? suspiciousAmount;
+  String? activeGroupWalkId;
 
   UserModel({
     this.id,
@@ -38,6 +39,7 @@ class UserModel {
     this.lastStepReset,
     this.suspiciousAmount,
     this.suspiciousWalkId,
+    this.activeGroupWalkId,
   });
 
   factory UserModel.fromMap(Map<String, dynamic> map) {
@@ -54,6 +56,7 @@ class UserModel {
       walks: (map['walks'] ?? 0).toInt(),
       earnings: (map['earnings'] ?? 0).toInt(),
       activeWalkId: map['activeWalkId'],
+      activeGroupWalkId: map['activeGroupWalkId'],
       isPaymentSuspicious: map['isPaymentSuspicious'] as bool? ?? false,
       suspiciousWalkId: map['suspiciousWalkId'] as String?,
       suspiciousAmount: (map['suspiciousAmount'] as num?)?.toDouble(),
@@ -79,6 +82,7 @@ class UserModel {
       'walks': walks,
       'earnings': earnings,
       'activeWalkId': activeWalkId,
+      'activeGroupWalkId': activeGroupWalkId,
       'isPaymentSuspicious': isPaymentSuspicious,
       'suspiciousWalkId': suspiciousWalkId,
       'suspiciousAmount': suspiciousAmount,
