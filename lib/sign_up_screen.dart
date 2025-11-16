@@ -1,10 +1,13 @@
 import 'package:aidkriya_walker/setup_flow_screen.dart';
 import 'package:aidkriya_walker/sign_in_screen.dart';
+import 'package:aidkriya_walker/verification_screen.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+
+import 'home_screen.dart';
 
 class SignUpScreen extends StatefulWidget {
   const SignUpScreen({super.key});
@@ -82,6 +85,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
         throw Exception("User credential is null");
       }
 
+      final user = userCredential.user!;
       final userId = userCredential.user!.uid;
       final userEmail = userCredential.user!.email ?? email;
 
@@ -114,21 +118,25 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
       _initializeTokenListener(userId);
 
-      _showSnackBar('Account created successfully!');
+      try {
+        await user.sendEmailVerification();
+        _showSnackBar('Verification email sent! Please check your inbox.');
+      } catch (e) {
+        debugPrint("Error sending verification email: $e");
+        _showSnackBar('Could not send verification email. Please try again.');
+      }
+
+
 
       if (!mounted) return;
       setState(() => _isLoading = false);
 
-      debugPrint(" Attempting navigation to SetupFlowScreen...");
+      debugPrint("Attempting navigation to VerificationScreen...");
 
       await Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (context) => SetupFlowScreen(
-            fullNameFromSignup: name,
-            userId: userId,
-            email: userEmail,
-          ),
+          builder: (context) => const VerificationScreen(),
         ),
       );
 
@@ -186,6 +194,11 @@ class _SignUpScreenState extends State<SignUpScreen> {
       );
 
       final userCredential = await _auth.signInWithCredential(credential);
+      final user = userCredential.user;
+
+      if (user == null) {
+        throw Exception("Google sign in failed, user is null.");
+      }
 
       final userId = userCredential.user!.uid;
       final userEmail = userCredential.user!.email ?? googleUser.email;
@@ -231,18 +244,30 @@ class _SignUpScreenState extends State<SignUpScreen> {
       if (!mounted) return;
       setState(() => _isLoading = false);
 
-      await Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (context) => SetupFlowScreen(
-            fullNameFromSignup: userName,
-            userId: userId,
-            email: userEmail,
-          ),
-        ),
-      );
+      final doc = await userDocRef.get();
+      final data = doc.data();
+      final String? role = data?['role'];
 
-      _showSnackBar('Signed in with Google!');
+      if (role == null || role.isEmpty) {
+        _showSnackBar('Signed in with Google! Please complete your profile.');
+        await Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => SetupFlowScreen(
+              fullNameFromSignup: userName,
+              userId: userId,
+              email: userEmail,
+            ),
+          ),
+        );
+      } else {
+        _showSnackBar('Welcome back!');
+        await Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const HomeScreen()),
+        );
+      }
+
     } on FirebaseAuthException catch (e) {
       debugPrint(" Google sign-in error: ${e.code} - ${e.message}");
       if (!mounted) return;
@@ -258,11 +283,16 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
   void _showSnackBar(String message) {
     if (!mounted) return;
+    final isError = message.toLowerCase().contains('error') ||
+        message.toLowerCase().contains('fail') ||
+        message.toLowerCase().contains('invalid') ||
+        message.toLowerCase().contains('weak');
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
-        backgroundColor: Colors.green,
-        duration: const Duration(seconds: 2),
+        backgroundColor: isError ? Colors.red : Colors.green,
+        duration: const Duration(seconds: 3),
       ),
     );
   }
