@@ -12,7 +12,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart'; // [NEW] Added for date formatting
+import 'package:intl/intl.dart'; // For date formatting
 
 import 'action_button.dart';
 import 'backend/pedometer_service.dart';
@@ -22,11 +22,11 @@ import 'model/user_model.dart';
 import 'screens/walk_summary_screen.dart';
 import 'screens/wanderer_active_walk_screen.dart';
 
-// Group Walk Imports
+// [NEW] Group Walk Imports
 import 'screens/group_walk/create_group_walk_screen.dart';
 import 'screens/group_walk/group_walk_active_screen.dart';
 import 'screens/group_walk/group_walk_summary_screen.dart';
-import 'screens/group_walk/group_walk_details_screen.dart'; // [NEW] Added details screen import
+import 'screens/group_walk/group_walk_details_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -41,6 +41,7 @@ class _HomeScreenState extends State<HomeScreen> {
   int walksCompleted = 12;
   int socialImpact = 250;
 
+  // [CRITICAL] Payment Suspension State
   bool _isSuspiciousDialogOpen = false;
 
   final locationService = LocationService();
@@ -54,6 +55,7 @@ class _HomeScreenState extends State<HomeScreen> {
   StreamSubscription<DocumentSnapshot>? _walkStatusSubscription;
   String? _activeWalkStatus;
 
+  // Group Walk State
   StreamSubscription<DocumentSnapshot>? _groupWalkStatusSubscription;
   String? _activeGroupWalkStatus;
 
@@ -67,7 +69,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _pedometerService.init();
   }
 
-  // --- [SUSPENSION LOGIC] ---
+  // --- [SUSPENSION LOGIC START] ---
   void _showSuspiciousDialog(String walkId, double amount) {
     if (_isSuspiciousDialogOpen) return;
     _isSuspiciousDialogOpen = true;
@@ -136,6 +138,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _isSuspiciousDialogOpen = false;
     }
   }
+  // --- [SUSPENSION LOGIC END] ---
 
   Future<void> _updateFcmToken() async {
     try {
@@ -175,7 +178,7 @@ class _HomeScreenState extends State<HomeScreen> {
       final newActiveGroupWalkId = userModel.activeGroupWalkId;
       final oldActiveGroupWalkId = _user?.activeGroupWalkId;
 
-      // 1-on-1 Walk Finished
+      // 1. 1-on-1 Walk Finished
       if (oldActiveWalkId != null && oldActiveWalkId.isNotEmpty && (newActiveWalkId == null || newActiveWalkId.isEmpty) && !_isCheckingForSummary) {
         setState(() { _user = userModel; _isWalker = isWalker; _isLoading = false; _isCheckingForSummary = true; });
         _checkForSuspension();
@@ -185,7 +188,7 @@ class _HomeScreenState extends State<HomeScreen> {
         return;
       }
 
-      // Group Walk Finished
+      // 2. Group Walk Finished
       if (oldActiveGroupWalkId != null && oldActiveGroupWalkId.isNotEmpty && (newActiveGroupWalkId == null || newActiveGroupWalkId.isEmpty) && !_isCheckingForSummary) {
         setState(() { _user = userModel; _isWalker = isWalker; _isLoading = false; _isCheckingForSummary = true; });
         _groupWalkStatusSubscription?.cancel(); _groupWalkStatusSubscription = null; setState(() { _activeGroupWalkStatus = null; });
@@ -195,9 +198,9 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       setState(() { _user = userModel; _isWalker = isWalker; _isLoading = false; });
-      _checkForSuspension();
+      _checkForSuspension(); // Check suspension on every update
 
-      // Manage 1-on-1 Status Listener
+      // 3. Manage 1-on-1 Status Listener
       if (newActiveWalkId != null && newActiveWalkId.isNotEmpty) {
         if (newActiveWalkId != oldActiveWalkId || _walkStatusSubscription == null) {
           _walkStatusSubscription?.cancel(); _walkStatusSubscription = null; setState(() { _activeWalkStatus = null; });
@@ -210,7 +213,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _walkStatusSubscription?.cancel(); _walkStatusSubscription = null; if (mounted) setState(() { _activeWalkStatus = null; });
       }
 
-      // Manage Group Status Listener
+      // 4. Manage Group Status Listener
       if (newActiveGroupWalkId != null && newActiveGroupWalkId.isNotEmpty) {
         if (newActiveGroupWalkId != oldActiveGroupWalkId || _groupWalkStatusSubscription == null) {
           _groupWalkStatusSubscription?.cancel(); _groupWalkStatusSubscription = null; setState(() { _activeGroupWalkStatus = null; });
@@ -309,12 +312,15 @@ class _HomeScreenState extends State<HomeScreen> {
       return const Scaffold(body: Center(child: Text("Please log in.")));
     }
 
+    // [SUSPENSION GUARD]
     if (!_isWalker && _user!.isPaymentSuspicious && (_user?.activeWalkId == null || _user!.activeWalkId!.isEmpty)) {
       return const Scaffold(body: Center(child: Padding(padding: EdgeInsets.all(20.0), child: Text("Account Suspended.\nPlease check the alert to complete pending payment.", textAlign: TextAlign.center, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.red)))));
     }
 
     return Scaffold(
       backgroundColor: const Color(0xFFF5F5F5),
+
+      // [NEW] Floating Action Button for Walkers
       floatingActionButton: _isWalker && _currentIndex == 0
           ? FloatingActionButton.extended(
         onPressed: () {
@@ -325,6 +331,7 @@ class _HomeScreenState extends State<HomeScreen> {
         backgroundColor: const Color(0xFF6BCBA6),
       )
           : null,
+
       body: SafeArea(child: _getCurrentScreen()),
       bottomNavigationBar: _buildBottomNavigationBar(),
     );
@@ -336,11 +343,13 @@ class _HomeScreenState extends State<HomeScreen> {
     final String? activeGroupWalkId = _user?.activeGroupWalkId;
     final String? groupStatus = _activeGroupWalkStatus;
 
+    // 1. Check 1-on-1
     if (activeWalkId != null && activeWalkId.isNotEmpty && (status == 'Accepted' || status == 'Started')) {
       if (_isWalker) return _buildWalkerActiveScreen(activeWalkId);
       else return WandererActiveWalkScreen(walkId: activeWalkId);
     }
 
+    // 2. Check Group
     if (activeGroupWalkId != null && activeGroupWalkId.isNotEmpty && (groupStatus == 'Scheduled' || groupStatus == 'Started')) {
       return GroupWalkActiveScreen(walkId: activeGroupWalkId, isWalker: _isWalker);
     }
@@ -353,7 +362,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  // --- [NEW SECTION] Scheduled Group Walks List for Walker ---
+  // --- [NEW] Scheduled Group Walks List for Walker ---
   Widget _buildScheduledGroupWalks() {
     if (!_isWalker || _user?.id == null) return const SizedBox.shrink();
 
@@ -365,14 +374,11 @@ class _HomeScreenState extends State<HomeScreen> {
           .orderBy('scheduledTime')
           .snapshots(),
       builder: (context, snapshot) {
-        // [FIX] Check for errors explicitly
+        // [FIX] Handle errors (Missing Index) gracefully
         if (snapshot.hasError) {
-          debugPrint("❌ FIRESTORE ERROR: ${snapshot.error}");
-          return Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Text("Error loading walks. Check console for index link.",
-                style: TextStyle(color: Colors.red)),
-          );
+          debugPrint("Firestore Error (Likely missing index): ${snapshot.error}");
+          // Return empty so it doesn't crash the UI while index builds
+          return const SizedBox.shrink();
         }
 
         if (snapshot.connectionState == ConnectionState.waiting) {
@@ -388,8 +394,7 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 16.0, horizontal: 4.0),
-              child: Text("My Upcoming Group Walks",
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              child: Text("My Upcoming Group Walks", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             ),
             ListView.builder(
               shrinkWrap: true,
@@ -398,14 +403,12 @@ class _HomeScreenState extends State<HomeScreen> {
               itemBuilder: (context, index) {
                 final doc = snapshot.data!.docs[index];
                 final data = doc.data() as Map<String, dynamic>;
-                // Handle null scheduledTime safely
                 final Timestamp? ts = data['scheduledTime'] as Timestamp?;
                 final DateTime time = ts?.toDate() ?? DateTime.now();
 
                 return Card(
                   margin: const EdgeInsets.only(bottom: 12),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   elevation: 2,
                   child: ListTile(
                     contentPadding: const EdgeInsets.all(12),
@@ -413,32 +416,23 @@ class _HomeScreenState extends State<HomeScreen> {
                       backgroundColor: Colors.green.shade100,
                       child: const Icon(Icons.groups, color: Colors.green),
                     ),
-                    title: Text(data['title'] ?? "Group Walk",
-                        style: const TextStyle(fontWeight: FontWeight.bold)),
+                    title: Text(data['title'] ?? "Group Walk", style: const TextStyle(fontWeight: FontWeight.bold)),
                     subtitle: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const SizedBox(height: 4),
                         Text(DateFormat('MMM d, h:mm a').format(time)),
-                        Text(
-                            "${data['participantCount']}/${data['maxParticipants']} joined • ₹${data['price']}",
-                            style: TextStyle(
-                                color: Colors.grey[600], fontSize: 12)),
+                        Text("${data['participantCount']}/${data['maxParticipants']} joined • ₹${data['price']}", style: TextStyle(color: Colors.grey[600], fontSize: 12)),
                       ],
                     ),
                     trailing: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF6BCBA6),
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8))),
+                      style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6BCBA6), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
                       onPressed: () {
                         Navigator.of(context).push(MaterialPageRoute(
-                          builder: (context) =>
-                              GroupWalkDetailsScreen(walkId: doc.id),
+                          builder: (context) => GroupWalkDetailsScreen(walkId: doc.id),
                         ));
                       },
-                      child: const Text("View",
-                          style: TextStyle(color: Colors.white)),
+                      child: const Text("View", style: TextStyle(color: Colors.white)),
                     ),
                   ),
                 );
@@ -500,7 +494,7 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(height: 24),
           _buildSocialImpactCard(),
 
-          // [NEW] Inserted Group Walks List Here
+          // [NEW] Group Walks List is here
           _buildScheduledGroupWalks(),
 
           const SizedBox(height: 32),
@@ -511,77 +505,32 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // ... (Rest of the widgets: _buildHeader, _buildGreeting, _buildStatsCards, etc. are unchanged)
   Widget _buildHeader() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Flexible(child: Text('aidKRIYA Walker', overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.black))),
-        GestureDetector(
-          onTap: _navigateToProfile,
-          child: CircleAvatar(
-            radius: 20,
-            backgroundColor: Colors.grey[300],
-            backgroundImage: _user?.imageUrl != null && _user!.imageUrl!.isNotEmpty ? NetworkImage(_user!.imageUrl!) : null,
-            child: (_user?.imageUrl == null || _user!.imageUrl!.isEmpty) ? Icon(Icons.person, color: Colors.grey[600]) : null,
-          ),
-        ),
-      ],
-    );
+    return Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+      Flexible(child: Text('aidKRIYA Walker', overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.black))),
+      GestureDetector(
+        onTap: _navigateToProfile,
+        child: CircleAvatar(radius: 20, backgroundColor: Colors.grey[300], backgroundImage: _user?.imageUrl != null && _user!.imageUrl!.isNotEmpty ? NetworkImage(_user!.imageUrl!) : null, child: (_user?.imageUrl == null || _user!.imageUrl!.isEmpty) ? Icon(Icons.person, color: Colors.grey[600]) : null),
+      ),
+    ]);
   }
-
   Widget _buildGreeting() {
     return Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
       Expanded(child: Text('Welcome, ${_user?.fullName.split(' ').first ?? 'User'} ', style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.black), overflow: TextOverflow.ellipsis, maxLines: 1)),
       const Text('👋', style: TextStyle(fontSize: 32)),
     ]);
   }
-
   Widget _buildStatsCards() {
     return Row(children: [
-      Expanded(child: StreamBuilder<int>(
-        stream: _pedometerService.stepsTodayStream,
-        initialData: _user?.stepsToday ?? 0,
-        builder: (context, snapshot) {
-          final steps = snapshot.data ?? _user?.stepsToday ?? 0;
-          return StatsCard(title: 'Steps Today', value: steps.toString(), onTap: () => _onStatsCardTap('Steps'));
-        },
-      )),
+      Expanded(child: StreamBuilder<int>(stream: _pedometerService.stepsTodayStream, initialData: _user?.stepsToday ?? 0, builder: (context, snapshot) { final steps = snapshot.data ?? _user?.stepsToday ?? 0; return StatsCard(title: 'Steps Today', value: steps.toString(), onTap: () => _onStatsCardTap('Steps')); })),
       const SizedBox(width: 16),
       Expanded(child: StatsCard(title: 'Walks\nCompleted', value: (_user?.walks ?? walksCompleted).toString(), onTap: () => _onStatsCardTap('Walks'))),
     ]);
   }
-
-  Widget _buildSocialImpactCard() {
-    return SocialImpactCard(amount: (_user?.earnings ?? socialImpact), onTap: _onSocialImpactTap);
-  }
-
-  Widget _buildActionButtons() {
-    return Column(children: [
-      ActionButton(text: _isWalker ? 'Incoming Requests' : 'Find a Walker', color: const Color(0xFF00E676), textColor: Colors.black, onPressed: _isWalker ? _onIncomingRequestPressed : _onFindWalkerPressed),
-      const SizedBox(height: 16),
-      ActionButton(text: 'My Walks', color: Colors.white, textColor: Colors.black, borderColor: Colors.grey[300], onPressed: _onViewHistoryPressed),
-    ]);
-  }
-
-  Widget _buildBottomNavigationBar() {
-    return Container(
-      decoration: BoxDecoration(color: Colors.white, boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -2))]),
-      child: BottomNavigationBar(
-        currentIndex: _currentIndex,
-        onTap: (index) => setState(() => _currentIndex = index),
-        type: BottomNavigationBarType.fixed,
-        backgroundColor: Colors.white,
-        selectedItemColor: const Color(0xFF00E676),
-        unselectedItemColor: Colors.grey[600],
-        items: [
-          const BottomNavigationBarItem(icon: Icon(Icons.home_outlined), activeIcon: Icon(Icons.home), label: 'Home'),
-          BottomNavigationBarItem(icon: Icon(Icons.directions_walk_outlined), activeIcon: Icon(Icons.directions_walk), label: _isWalker ? 'Requests' : 'Walks'),
-          const BottomNavigationBarItem(icon: Icon(Icons.person_outline), activeIcon: Icon(Icons.person), label: 'Profile'),
-        ],
-      ),
-    );
-  }
-
+  Widget _buildSocialImpactCard() { return SocialImpactCard(amount: (_user?.earnings ?? socialImpact), onTap: _onSocialImpactTap); }
+  Widget _buildActionButtons() { return Column(children: [ ActionButton(text: _isWalker ? 'Incoming Requests' : 'Find a Walker', color: const Color(0xFF00E676), textColor: Colors.black, onPressed: _isWalker ? _onIncomingRequestPressed : _onFindWalkerPressed), const SizedBox(height: 16), ActionButton(text: 'My Walks', color: Colors.white, textColor: Colors.black, borderColor: Colors.grey[300], onPressed: _onViewHistoryPressed)]); }
+  Widget _buildBottomNavigationBar() { return Container(decoration: BoxDecoration(color: Colors.white, boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -2))]), child: BottomNavigationBar(currentIndex: _currentIndex, onTap: (index) => setState(() => _currentIndex = index), type: BottomNavigationBarType.fixed, backgroundColor: Colors.white, selectedItemColor: const Color(0xFF00E676), unselectedItemColor: Colors.grey[600], items: [ const BottomNavigationBarItem(icon: Icon(Icons.home_outlined), activeIcon: Icon(Icons.home), label: 'Home'), BottomNavigationBarItem(icon: Icon(Icons.directions_walk_outlined), activeIcon: Icon(Icons.directions_walk), label: _isWalker ? 'Requests' : 'Walks'), const BottomNavigationBarItem(icon: Icon(Icons.person_outline), activeIcon: Icon(Icons.person), label: 'Profile') ])); }
   void _navigateToProfile() => setState(() => _currentIndex = 2);
   void _onStatsCardTap(String type) => debugPrint('Stats card tapped: $type');
   void _onSocialImpactTap() => debugPrint('Social impact card tapped');

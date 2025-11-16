@@ -50,16 +50,44 @@ class _FindWalkerScreenState extends State<FindWalkerScreen> {
 
   Future<void> _initializeScreen() async {
     try {
+      developer.log('FindWalkerScreen: Initializing...', name: 'FindWalker');
+
       bool hasPermission = await _checkLocationPermission();
       if (!hasPermission) {
         setState(() => _isLoading = false);
         return;
       }
-      myPos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
-      _startListeningToWalkers();
+
+      // [OPTIMIZATION] Try to get last known position first (INSTANT)
+      Position? lastKnownPos = await Geolocator.getLastKnownPosition();
+
+      if (lastKnownPos != null) {
+        setState(() {
+          myPos = lastKnownPos;
+          _isLoading = false; // Show UI immediately with cached location
+        });
+        _startListeningToWalkers(); // Start data stream immediately
+      }
+
+      // Then fetch fresh, precise location in background
+      myPos = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+        timeLimit: const Duration(seconds: 5), // Don't wait forever
+      );
+
+      // Update UI with fresh location
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+        // Re-trigger listener with new accurate position
+        _startListeningToWalkers();
+      }
+
     } catch (e) {
+      developer.log('FindWalkerScreen: Error: $e', name: 'FindWalker');
       setState(() => _isLoading = false);
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error getting location: $e')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
     }
   }
 
