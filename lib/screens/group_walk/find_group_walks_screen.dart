@@ -30,7 +30,11 @@ class FindGroupWalksScreen extends StatelessWidget {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.groups_outlined, size: 60, color: Colors.grey[400]),
+                  Icon(
+                    Icons.groups_outlined,
+                    size: 60,
+                    color: Colors.grey[400],
+                  ),
                   const SizedBox(height: 16),
                   Text(
                     'No Group Walks Scheduled',
@@ -53,7 +57,8 @@ class FindGroupWalksScreen extends StatelessWidget {
             itemBuilder: (context, index) {
               final walk = walks[index];
               final data = walk.data() as Map<String, dynamic>;
-              final walkerInfo = data['walkerInfo'] as Map<String, dynamic>? ?? {};
+              final walkerInfo =
+                  data['walkerInfo'] as Map<String, dynamic>? ?? {};
 
               return _GroupWalkCard(
                 walkId: walk.id,
@@ -62,8 +67,10 @@ class FindGroupWalksScreen extends StatelessWidget {
                 walkerImageUrl: walkerInfo['imageUrl'],
                 price: (data['price'] as num?)?.toDouble() ?? 0.0,
                 scheduledTime: (data['scheduledTime'] as Timestamp).toDate(),
-                participantCount: (data['participantCount'] as num?)?.toInt() ?? 0,
-                maxParticipants: (data['maxParticipants'] as num?)?.toInt() ?? 0,
+                participantCount:
+                    (data['participantCount'] as num?)?.toInt() ?? 0,
+                maxParticipants:
+                    (data['maxParticipants'] as num?)?.toInt() ?? 0,
               );
             },
           );
@@ -100,14 +107,17 @@ class _GroupWalkCard extends StatelessWidget {
     final bool isFull = spotsLeft <= 0;
 
     return Card(
+      color: Colors.white,
       margin: const EdgeInsets.only(bottom: 16),
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: InkWell(
         onTap: () {
-          Navigator.of(context).push(MaterialPageRoute(
-            builder: (context) => GroupWalkDetailsScreen(walkId: walkId),
-          ));
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => GroupWalkDetailsScreen(walkId: walkId),
+            ),
+          );
         },
         borderRadius: BorderRadius.circular(16),
         child: Padding(
@@ -115,13 +125,25 @@ class _GroupWalkCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
               const SizedBox(height: 8),
               Row(
                 children: [
                   WalkerAvatar(imageUrl: walkerImageUrl, size: 30),
                   const SizedBox(width: 8),
-                  Text("Led by $walkerName", style: TextStyle(color: Colors.grey[700], fontStyle: FontStyle.italic)),
+                  Text(
+                    "Led by $walkerName",
+                    style: TextStyle(
+                      color: Colors.grey[700],
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
                 ],
               ),
               const Divider(height: 24),
@@ -131,17 +153,34 @@ class _GroupWalkCard extends StatelessWidget {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(DateFormat('EEE, MMM d').format(scheduledTime), style: const TextStyle(fontWeight: FontWeight.w500)),
-                      Text(DateFormat('h:mm a').format(scheduledTime), style: TextStyle(color: Colors.grey[600])),
+                      Text(
+                        DateFormat('EEE, MMM d').format(scheduledTime),
+                        style: const TextStyle(fontWeight: FontWeight.w500),
+                      ),
+                      Text(
+                        DateFormat('h:mm a').format(scheduledTime),
+                        style: TextStyle(color: Colors.grey[600]),
+                      ),
                     ],
                   ),
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      Text("₹${price.toStringAsFixed(2)}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF00C853))),
                       Text(
-                        isFull ? "Full" : "$spotsLeft ${spotsLeft == 1 ? 'spot' : 'spots'} left",
-                        style: TextStyle(color: isFull ? Colors.red : Colors.blueAccent),
+                        "₹${price.toStringAsFixed(2)}",
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                          color: Color(0xFF00C853),
+                        ),
+                      ),
+                      Text(
+                        isFull
+                            ? "Full"
+                            : "$spotsLeft ${spotsLeft == 1 ? 'spot' : 'spots'} left",
+                        style: TextStyle(
+                          color: isFull ? Colors.red : Colors.blueAccent,
+                        ),
                       ),
                     ],
                   ),

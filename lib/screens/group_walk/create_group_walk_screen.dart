@@ -66,8 +66,10 @@ class _CreateGroupWalkScreenState extends State<CreateGroupWalkScreen> {
     final user = _auth.currentUser;
     if (user == null) return;
     try {
-      final doc =
-      await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
       if (doc.exists) {
         final data = doc.data()!;
         _walkerInfo = {
@@ -129,7 +131,9 @@ class _CreateGroupWalkScreenState extends State<CreateGroupWalkScreen> {
       _showError("Could not load your profile. Please try again.");
       return;
     }
-    if (DateTime.now().add(const Duration(minutes: 30)).isAfter(_selectedDateTime)) {
+    if (DateTime.now()
+        .add(const Duration(minutes: 30))
+        .isAfter(_selectedDateTime)) {
       _showError("Scheduled time must be at least 30 minutes in the future.");
       return;
     }
@@ -142,7 +146,10 @@ class _CreateGroupWalkScreenState extends State<CreateGroupWalkScreen> {
         'walkerInfo': _walkerInfo,
         'title': _titleController.text,
         'scheduledTime': Timestamp.fromDate(_selectedDateTime),
-        'meetingPoint': GeoPoint(_meetingPoint!.latitude, _meetingPoint!.longitude),
+        'meetingPoint': GeoPoint(
+          _meetingPoint!.latitude,
+          _meetingPoint!.longitude,
+        ),
         'duration': "60 min",
         'price': double.tryParse(_priceController.text) ?? 0.0,
         'maxParticipants': int.tryParse(_maxParticipantsController.text) ?? 1,
@@ -241,15 +248,27 @@ class _CreateGroupWalkScreenState extends State<CreateGroupWalkScreen> {
       extendBodyBehindAppBar: true,
       backgroundColor: Colors.white,
       appBar: AppBar(
-        title: const Text('Create Group Walk'),
         elevation: 0,
-        backgroundColor: Colors.transparent,
-        foregroundColor: Colors.black,
+        backgroundColor: Colors.white,
+        centerTitle: true,
+        title: const Text(
+          'Create Group Walk', // Keep user's new title
+          style: TextStyle(
+            color: Colors.black,
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
       ),
       body: Form(
         key: _formKey,
         child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(16, 100, 16, 16), // keep content below status bar
+          padding: const EdgeInsets.fromLTRB(
+            16,
+            60,
+            16,
+            16,
+          ), // keep content below status bar
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -257,7 +276,10 @@ class _CreateGroupWalkScreenState extends State<CreateGroupWalkScreen> {
               _animatedInputCard(
                 focusNode: _titleFocus,
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 6,
+                  ),
                   child: TextFormField(
                     focusNode: _titleFocus,
                     controller: _titleController,
@@ -272,7 +294,7 @@ class _CreateGroupWalkScreenState extends State<CreateGroupWalkScreen> {
                       floatingLabelStyle: const TextStyle(color: green),
                     ),
                     validator: (val) =>
-                    val!.isEmpty ? 'Please enter a title' : null,
+                        val!.isEmpty ? 'Please enter a title' : null,
                   ),
                 ),
               ),
@@ -285,10 +307,16 @@ class _CreateGroupWalkScreenState extends State<CreateGroupWalkScreen> {
                   Expanded(
                     child: _animatedInputCard(
                       focusNode: _priceFocus,
-                      margin: const EdgeInsets.only(right: 8, top: 6, bottom: 6),
+                      margin: const EdgeInsets.only(
+                        right: 8,
+                        top: 6,
+                        bottom: 6,
+                      ),
                       child: Padding(
-                        padding:
-                        const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 6,
+                        ),
                         child: TextFormField(
                           focusNode: _priceFocus,
                           controller: _priceController,
@@ -304,7 +332,7 @@ class _CreateGroupWalkScreenState extends State<CreateGroupWalkScreen> {
                           ),
                           keyboardType: TextInputType.number,
                           validator: (val) =>
-                          (double.tryParse(val ?? '0') ?? 0) <= 0
+                              (double.tryParse(val ?? '0') ?? 0) <= 0
                               ? 'Price must be > 0'
                               : null,
                         ),
@@ -316,8 +344,10 @@ class _CreateGroupWalkScreenState extends State<CreateGroupWalkScreen> {
                       focusNode: _maxParticipantsFocus,
                       margin: const EdgeInsets.only(left: 8, top: 6, bottom: 6),
                       child: Padding(
-                        padding:
-                        const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 6,
+                        ),
                         child: TextFormField(
                           focusNode: _maxParticipantsFocus,
                           controller: _maxParticipantsController,
@@ -332,7 +362,7 @@ class _CreateGroupWalkScreenState extends State<CreateGroupWalkScreen> {
                           ),
                           keyboardType: TextInputType.number,
                           validator: (val) =>
-                          (int.tryParse(val ?? '0') ?? 0) <= 0
+                              (int.tryParse(val ?? '0') ?? 0) <= 0
                               ? 'Must be at least 1'
                               : null,
                         ),
@@ -344,19 +374,26 @@ class _CreateGroupWalkScreenState extends State<CreateGroupWalkScreen> {
 
               const SizedBox(height: 16),
 
-              const Text('Select Date & Time',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              const Text(
+                'Select Date & Time',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
               ListTile(
                 leading: const Icon(Icons.calendar_today, color: green),
                 title: Text(
-                    DateFormat('EEE, MMM d, yyyy \n@ h:mm a').format(_selectedDateTime)),
+                  DateFormat(
+                    'EEE, MMM d, yyyy \n@ h:mm a',
+                  ).format(_selectedDateTime),
+                ),
                 onTap: _selectDateTime,
               ),
 
               const SizedBox(height: 24),
 
-              const Text('Select Meeting Point',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              const Text(
+                'Select Meeting Point',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
               const SizedBox(height: 8),
 
               Container(
@@ -375,11 +412,11 @@ class _CreateGroupWalkScreenState extends State<CreateGroupWalkScreen> {
                   markers: _meetingPoint == null
                       ? {}
                       : {
-                    Marker(
-                      markerId: const MarkerId('meetingPoint'),
-                      position: _meetingPoint!,
-                    ),
-                  },
+                          Marker(
+                            markerId: const MarkerId('meetingPoint'),
+                            position: _meetingPoint!,
+                          ),
+                        },
                 ),
               ),
 
@@ -392,10 +429,15 @@ class _CreateGroupWalkScreenState extends State<CreateGroupWalkScreen> {
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 16),
                 ),
-                icon: _isLoading ? const SizedBox.shrink() : const Icon(Icons.add),
+                icon: _isLoading
+                    ? const SizedBox.shrink()
+                    : const Icon(Icons.add),
                 label: _isLoading
                     ? const CircularProgressIndicator(color: Colors.white)
-                    : const Text('Create Walk Event', style: TextStyle(fontSize: 16)),
+                    : const Text(
+                        'Create Walk Event',
+                        style: TextStyle(fontSize: 16),
+                      ),
               ),
             ],
           ),

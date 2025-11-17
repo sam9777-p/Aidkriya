@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -33,8 +34,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _uploadToCloudinary(File image) async {
     const cloudName = "doturqykw";
     const uploadPreset = "profileImageAid";
-    final url =
-    Uri.parse("https://api.cloudinary.com/v1_1/$cloudName/image/upload");
+    final url = Uri.parse(
+      "https://api.cloudinary.com/v1_1/$cloudName/image/upload",
+    );
 
     try {
       setState(() => _isUploading = true);
@@ -46,8 +48,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final response = await request.send();
 
       if (response.statusCode == 200) {
-        final jsonResponse =
-        json.decode(await response.stream.bytesToString());
+        final jsonResponse = json.decode(await response.stream.bytesToString());
         final imageUrl = jsonResponse['secure_url'];
 
         final user = FirebaseAuth.instance.currentUser;
@@ -56,9 +57,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
               .collection('users')
               .doc(user.uid)
               .set({
-            'profileImage': imageUrl,
-            'updatedAt': FieldValue.serverTimestamp(),
-          }, SetOptions(merge: true));
+                'profileImage': imageUrl,
+                'updatedAt': FieldValue.serverTimestamp(),
+              }, SetOptions(merge: true));
 
           setState(() {
             _uploadedImageUrl = imageUrl;
@@ -68,7 +69,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                  content: Text('✅ Profile photo updated successfully!')),
+                content: Text('✅ Profile photo updated successfully!'),
+              ),
             );
           }
         }
@@ -80,9 +82,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       }
     } catch (e) {
       debugPrint("⚠️ Cloudinary upload error: $e");
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error uploading image: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error uploading image: $e')));
     } finally {
       setState(() => _isUploading = false);
     }
@@ -101,18 +103,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _profileImage = null;
     });
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Profile photo removed.')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Profile photo removed.')));
   }
 
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
-      return const Scaffold(
-        body: Center(child: Text("User not logged in")),
-      );
+      return const Scaffold(body: Center(child: Text("User not logged in")));
     }
 
     final userId = user.uid;
@@ -139,20 +139,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
             final data = snapshot.data!.data() as Map<String, dynamic>? ?? {};
             final fullName = data['fullName'] ?? 'User';
             final city = data['city'] ?? 'Unknown City';
-            final bio = data['bio'] ??
+            final bio =
+                data['bio'] ??
                 'No bio available. Add something about yourself!';
-            final profileUrl = _uploadedImageUrl ??
+            final profileUrl =
+                _uploadedImageUrl ??
                 (data['profileImage'] ?? '') as String? ??
                 '';
-            final interests = (data['interests'] as List<dynamic>?)
-                ?.cast<String>() ??
-                [];
+            final interests =
+                (data['interests'] as List<dynamic>?)?.cast<String>() ?? [];
             final earnings = data['earnings'] ?? 0;
             final totalWalksFuture = FirebaseFirestore.instance
                 .collection('accepted_walks')
                 .where('walkerId', isEqualTo: userId)
                 .get();
-
+            final role = data['role'] ?? "Walker";
 
             return SingleChildScrollView(
               padding: const EdgeInsets.only(bottom: 100),
@@ -173,7 +174,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             backgroundImage: profileUrl.isNotEmpty
                                 ? NetworkImage(profileUrl)
                                 : const NetworkImage(
-                                "https://cdn-icons-png.flaticon.com/512/3135/3135715.png"),
+                                    "https://cdn-icons-png.flaticon.com/512/3135/3135715.png",
+                                  ),
                             backgroundColor: Colors.grey.shade300,
                           ),
                           Positioned(
@@ -191,15 +193,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     ),
                                     child: _isUploading
                                         ? const SizedBox(
-                                      height: 16,
-                                      width: 16,
-                                      child: CircularProgressIndicator(
-                                        color: Colors.white,
-                                        strokeWidth: 2,
-                                      ),
-                                    )
-                                        : const Icon(Icons.edit,
-                                        color: Colors.white, size: 20),
+                                            height: 16,
+                                            width: 16,
+                                            child: CircularProgressIndicator(
+                                              color: Colors.white,
+                                              strokeWidth: 2,
+                                            ),
+                                          )
+                                        : const Icon(
+                                            Icons.edit,
+                                            color: Colors.white,
+                                            size: 20,
+                                          ),
                                   ),
                                 ),
                                 const SizedBox(width: 8),
@@ -212,8 +217,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                         color: Colors.redAccent,
                                         shape: BoxShape.circle,
                                       ),
-                                      child: const Icon(Icons.delete,
-                                          color: Colors.white, size: 20),
+                                      child: const Icon(
+                                        Icons.delete,
+                                        color: Colors.white,
+                                        size: 20,
+                                      ),
                                     ),
                                   ),
                               ],
@@ -251,7 +259,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 .get(),
                             builder: (context, snapshot) {
                               int totalWalks = 0;
-                              if (snapshot.connectionState == ConnectionState.waiting) {
+                              if (snapshot.connectionState ==
+                                  ConnectionState.waiting) {
                                 return Expanded(
                                   child: _buildStatCard("Total Walks", "..."),
                                 );
@@ -260,15 +269,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 totalWalks = snapshot.data!.docs.length;
                               }
                               return Expanded(
-                                child: _buildStatCard("Total Walks", totalWalks.toString()),
+                                child: _buildStatCard(
+                                  "Total Walks",
+                                  totalWalks.toString(),
+                                ),
                               );
                             },
                           ),
                           const SizedBox(width: 12),
                           Expanded(
                             child: _buildStatCard(
-                              "Total Earnings",
-                              "₹${earnings.toString()}",
+                              role == "Walker"
+                                  ? "Total Earnings"
+                                  : "Total Impact",
+                              "₹${(earnings ?? 0).toDouble().toStringAsFixed(2)}",
                             ),
                           ),
                         ],
@@ -291,17 +305,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       _buildSectionTitle("Interests"),
                       interests.isEmpty
                           ? const Text(
-                        "No interests added.",
-                        style:
-                        TextStyle(color: Colors.grey, fontSize: 14),
-                      )
+                              "No interests added.",
+                              style: TextStyle(
+                                color: Colors.grey,
+                                fontSize: 14,
+                              ),
+                            )
                           : Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: interests
-                            .map((i) => _InterestChip(i))
-                            .toList(),
-                      ),
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: interests
+                                  .map((i) => _InterestChip(i))
+                                  .toList(),
+                            ),
 
                       const SizedBox(height: 24),
                       _buildSettingsList(context, data),
@@ -316,7 +332,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-
   Widget _buildStatCard(String title, String value) => Expanded(
     child: Container(
       margin: const EdgeInsets.symmetric(horizontal: 4),
@@ -329,8 +344,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title,
-              style: const TextStyle(fontSize: 16, color: Colors.grey)),
+          Text(title, style: const TextStyle(fontSize: 16, color: Colors.grey)),
           const SizedBox(height: 6),
           Text(
             value,
@@ -357,7 +371,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     ),
   );
 
-  Widget _buildSettingsList(BuildContext context, Map<String, dynamic> userData) {
+  Widget _buildSettingsList(
+    BuildContext context,
+    Map<String, dynamic> userData,
+  ) {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -374,8 +391,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               shape: const RoundedRectangleBorder(
                 borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
               ),
-              builder: (context) =>
-                  EditProfileBottomSheet(userData: userData),
+              builder: (context) => EditProfileBottomSheet(userData: userData),
             );
           }),
           Divider(color: Colors.grey.shade300, height: 1),
@@ -388,34 +404,38 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildSettingsItem(
-      IconData icon, String title, Color color, VoidCallback onTap) =>
-      ListTile(
-        onTap: onTap,
-        leading: Icon(icon, color: color),
-        title: Text(
-          title,
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w500,
-            color: color == Colors.red ? Colors.red : Colors.black87,
-          ),
-        ),
-        trailing: Icon(Icons.chevron_right, color: Colors.grey.shade500),
-      );
+    IconData icon,
+    String title,
+    Color color,
+    VoidCallback onTap,
+  ) => ListTile(
+    onTap: onTap,
+    leading: Icon(icon, color: color),
+    title: Text(
+      title,
+      style: TextStyle(
+        fontSize: 16,
+        fontWeight: FontWeight.w500,
+        color: color == Colors.red ? Colors.red : Colors.black87,
+      ),
+    ),
+    trailing: Icon(Icons.chevron_right, color: Colors.grey.shade500),
+  );
 
   void _showLogoutDialog(BuildContext context) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: Colors.white,
-        shape:
-        RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Row(
           children: const [
             Icon(Icons.logout, color: Colors.green),
             SizedBox(width: 8),
-            Text("Confirm Logout",
-                style: TextStyle(fontWeight: FontWeight.bold)),
+            Text(
+              "Confirm Logout",
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
           ],
         ),
         content: const Text("Are you sure you want to log out?"),
@@ -435,10 +455,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.green,
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8)),
+                borderRadius: BorderRadius.circular(8),
+              ),
             ),
-            child:
-            const Text("Yes", style: TextStyle(color: Colors.white)),
+            child: const Text("Yes", style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
