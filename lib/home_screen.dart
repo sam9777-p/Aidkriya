@@ -320,17 +320,8 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F5F5),
 
-      // [NEW] Floating Action Button for Walkers
-      floatingActionButton: _isWalker && _currentIndex == 0
-          ? FloatingActionButton.extended(
-        onPressed: () {
-          Navigator.of(context).push(MaterialPageRoute(builder: (context) => const CreateGroupWalkScreen()));
-        },
-        icon: const Icon(Icons.group_add),
-        label: const Text("Create Group Walk"),
-        backgroundColor: const Color(0xFF6BCBA6),
-      )
-          : null,
+      // [MODIFICATION] Floating Action Button for Walkers removed
+      floatingActionButton: null,
 
       body: SafeArea(child: _getCurrentScreen()),
       bottomNavigationBar: _buildBottomNavigationBar(),
@@ -354,11 +345,24 @@ class _HomeScreenState extends State<HomeScreen> {
       return GroupWalkActiveScreen(walkId: activeGroupWalkId, isWalker: _isWalker);
     }
 
-    switch (_currentIndex) {
-      case 0: return _buildHomeContent();
-      case 1: return !_isWalker ? const FindWalkerScreen() : const IncomingRequestsScreen();
-      case 2: return const ProfileScreen();
-      default: return const Center(child: Text('Unknown tab'));
+    // 3. [MODIFICATION] Check tabs based on role
+    if (_isWalker) {
+      // Walker: Home, Requests, Group Walk, Profile
+      switch (_currentIndex) {
+        case 0: return _buildHomeContent();
+        case 1: return const IncomingRequestsScreen();
+        case 2: return const CreateGroupWalkScreen(); // New Tab
+        case 3: return const ProfileScreen();
+        default: return _buildHomeContent(); // Default to home
+      }
+    } else {
+      // Wanderer: Home, Walks, Profile
+      switch (_currentIndex) {
+        case 0: return _buildHomeContent();
+        case 1: return const FindWalkerScreen();
+        case 2: return const ProfileScreen();
+        default: return _buildHomeContent(); // Default to home
+      }
     }
   }
 
@@ -408,10 +412,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
                 return Card(
                   margin: const EdgeInsets.only(bottom: 12),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  elevation: 2,
+                  color: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
                   child: ListTile(
-                    contentPadding: const EdgeInsets.all(12),
+                    contentPadding: const EdgeInsets.all(16),
                     leading: CircleAvatar(
                       backgroundColor: Colors.green.shade100,
                       child: const Icon(Icons.groups, color: Colors.green),
@@ -426,7 +430,8 @@ class _HomeScreenState extends State<HomeScreen> {
                       ],
                     ),
                     trailing: ElevatedButton(
-                      style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6BCBA6), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
+                      style: ElevatedButton.styleFrom(backgroundColor: const Color(
+                          0xFF26DB84), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
                       onPressed: () {
                         Navigator.of(context).push(MaterialPageRoute(
                           builder: (context) => GroupWalkDetailsScreen(walkId: doc.id),
@@ -530,8 +535,67 @@ class _HomeScreenState extends State<HomeScreen> {
   }
   Widget _buildSocialImpactCard() { return SocialImpactCard(amount: (_user?.earnings ?? socialImpact), onTap: _onSocialImpactTap); }
   Widget _buildActionButtons() { return Column(children: [ ActionButton(text: _isWalker ? 'Incoming Requests' : 'Find a Walker', color: const Color(0xFF00E676), textColor: Colors.black, onPressed: _isWalker ? _onIncomingRequestPressed : _onFindWalkerPressed), const SizedBox(height: 16), ActionButton(text: 'My Walks', color: Colors.white, textColor: Colors.black, borderColor: Colors.grey[300], onPressed: _onViewHistoryPressed)]); }
-  Widget _buildBottomNavigationBar() { return Container(decoration: BoxDecoration(color: Colors.white, boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -2))]), child: BottomNavigationBar(currentIndex: _currentIndex, onTap: (index) => setState(() => _currentIndex = index), type: BottomNavigationBarType.fixed, backgroundColor: Colors.white, selectedItemColor: const Color(0xFF00E676), unselectedItemColor: Colors.grey[600], items: [ const BottomNavigationBarItem(icon: Icon(Icons.home_outlined), activeIcon: Icon(Icons.home), label: 'Home'), BottomNavigationBarItem(icon: Icon(Icons.directions_walk_outlined), activeIcon: Icon(Icons.directions_walk), label: _isWalker ? 'Requests' : 'Walks'), const BottomNavigationBarItem(icon: Icon(Icons.person_outline), activeIcon: Icon(Icons.person), label: 'Profile') ])); }
-  void _navigateToProfile() => setState(() => _currentIndex = 2);
+
+  // --- [MODIFICATION] ---
+  Widget _buildBottomNavigationBar() {
+    // Dynamically build the items list based on user role
+    final List<BottomNavigationBarItem> items = [
+      const BottomNavigationBarItem(
+        icon: Icon(Icons.home_outlined),
+        activeIcon: Icon(Icons.home),
+        label: 'Home',
+      ),
+      BottomNavigationBarItem(
+        icon: Icon(Icons.directions_walk_outlined),
+        activeIcon: Icon(Icons.directions_walk),
+        label: _isWalker ? 'Requests' : 'Walks',
+      ),
+    ];
+
+    if (_isWalker) {
+      items.add(
+        const BottomNavigationBarItem(
+          icon: Icon(Icons.group_add_outlined),
+          activeIcon: Icon(Icons.group_add),
+          label: 'Group Walk',
+        ),
+      );
+    }
+
+    items.add(
+      const BottomNavigationBarItem(
+        icon: Icon(Icons.person_outline),
+        activeIcon: Icon(Icons.person),
+        label: 'Profile',
+      ),
+    );
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, -2),
+          )
+        ],
+      ),
+      child: BottomNavigationBar(
+        currentIndex: _currentIndex,
+        onTap: (index) => setState(() => _currentIndex = index),
+        type: BottomNavigationBarType.fixed,
+        backgroundColor: Colors.white,
+        selectedItemColor: const Color(0xFF00E676),
+        unselectedItemColor: Colors.grey[600],
+        items: items, // Use the new dynamic list
+      ),
+    );
+  }
+
+  // [MODIFICATION] Updated to handle 3 or 4 tabs
+  void _navigateToProfile() => setState(() => _currentIndex = _isWalker ? 3 : 2);
+
   void _onStatsCardTap(String type) => debugPrint('Stats card tapped: $type');
   void _onSocialImpactTap() => debugPrint('Social impact card tapped');
   void _onFindWalkerPressed() => setState(() => _currentIndex = 1);

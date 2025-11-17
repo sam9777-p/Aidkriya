@@ -46,6 +46,9 @@ class _WalkActiveScreenState extends State<WalkActiveScreen> {
   double? _walkerLat;
   double? _walkerLon;
 
+  // [NEW] Store wanderer's phone number
+  String? _wandererPhoneNumber;
+
 
   @override
   void initState() {
@@ -56,6 +59,9 @@ class _WalkActiveScreenState extends State<WalkActiveScreen> {
 
     _walkerLat = widget.walkData.latitude + 0.005;
     _walkerLon = widget.walkData.longitude - 0.005;
+
+    // [NEW] Fetch the wanderer's phone number
+    _fetchWandererPhone();
 
     // Start the UI update loop
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
@@ -77,6 +83,31 @@ class _WalkActiveScreenState extends State<WalkActiveScreen> {
     _autoEndTimer?.cancel();
     _stopwatch.stop();
     super.dispose();
+  }
+
+  // --- [NEW] Fetch Wanderer Phone ---
+  Future<void> _fetchWandererPhone() async {
+    try {
+      // The 'senderId' is the wanderer who created the request
+      final wandererId = widget.walkData.senderId;
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(wandererId)
+          .get();
+
+      if (userDoc.exists && userDoc.data() != null) {
+        if (mounted) {
+          setState(() {
+            _wandererPhoneNumber = userDoc.data()!['phone'] as String?;
+          });
+        }
+        debugPrint("[WalkActiveScreen] Fetched wanderer phone: $_wandererPhoneNumber");
+      } else {
+        debugPrint("[WalkActiveScreen] Wanderer document does not exist: $wandererId");
+      }
+    } catch (e) {
+      debugPrint("[WalkActiveScreen] Error fetching wanderer phone: $e");
+    }
   }
 
   // --- Auto-End Logic ---
@@ -148,6 +179,31 @@ class _WalkActiveScreenState extends State<WalkActiveScreen> {
       }
     }
     // [REMOVED] Finally block, as _isEndingWalk will persist until screen is destroyed
+  }
+
+  // --- [NEW] Call Wanderer ---
+  Future<void> _onCallTapped() async {
+    if (_wandererPhoneNumber == null || _wandererPhoneNumber!.isEmpty) {
+      debugPrint("[WalkActiveScreen] No phone number available for wanderer.");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Wanderer\'s phone number is not available.')),
+        );
+      }
+      return;
+    }
+
+    final Uri phoneUri = Uri.parse('tel:$_wandererPhoneNumber');
+
+    if (await canLaunchUrl(phoneUri)) {
+      await launchUrl(phoneUri);
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Unable to open dialer. Please call $_wandererPhoneNumber manually.')),
+        );
+      }
+    }
   }
 
   Future<void> _launchEmergencyCall() async {
@@ -324,6 +380,14 @@ class _WalkActiveScreenState extends State<WalkActiveScreen> {
             onPressed: _onMessageTapped,
             child: const Icon(Icons.chat_bubble_outline),
           ),
+          // --- [NEW] CALL BUTTON ---
+          const SizedBox(width: 16),
+          FloatingActionButton(
+            heroTag: 'Call',
+            onPressed: _onCallTapped,
+            child: const Icon(Icons.call_outlined),
+          ),
+          // --- [END NEW] ---
         ],
       );
     } else {
@@ -347,6 +411,14 @@ class _WalkActiveScreenState extends State<WalkActiveScreen> {
             onPressed: _onMessageTapped,
             child: const Icon(Icons.chat_bubble_outline),
           ),
+          // --- [NEW] CALL BUTTON ---
+          const SizedBox(width: 16),
+          FloatingActionButton(
+            heroTag: 'Call',
+            onPressed: _onCallTapped,
+            child: const Icon(Icons.call_outlined),
+          ),
+          // --- [END NEW] ---
         ],
       );
     }

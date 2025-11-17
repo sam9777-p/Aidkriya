@@ -1,7 +1,6 @@
 // lib/screens/wanderer_active_walk_screen.dart
 import 'dart:async';
 
-import 'package:aidkriya_walker/screens/walk_summary_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -11,8 +10,8 @@ import 'package:url_launcher/url_launcher.dart';
 import 'dart:math' as math;
 
 import '../backend/walk_request_service.dart';
-import '../model/incoming_request_display.dart';
-import '../find_walker_screen.dart';
+// import '../model/incoming_request_display.dart'; // Not used in this file
+// import '../find_walker_screen.dart'; // Not used in this file
 import '../components/walker_avatar.dart';
 import '../screens/chat_screen.dart';
 import '../components/request_map_widget.dart';
@@ -83,6 +82,9 @@ class _WandererActiveWalkScreenState extends State<WandererActiveWalkScreen> {
   // [MODIFIED] Only one bool needed
   bool _isCancelling = false;
 
+  // [NEW] Store walker's phone number
+  String? _walkerPhoneNumber;
+
   // Live Walker Location State
   StreamSubscription<DatabaseEvent>? _walkerLocationSubscription;
   double? _walkerLiveLat;
@@ -110,6 +112,24 @@ class _WandererActiveWalkScreenState extends State<WandererActiveWalkScreen> {
         debugPrint("[WandererActiveWalkScreen] Walker ID not found.");
         return;
       }
+
+      // --- [NEW] Fetch Walker's Phone Number ---
+      try {
+        final userDoc = await _firestore.collection('users').doc(walkerId).get();
+        if (userDoc.exists && userDoc.data() != null) {
+          if (mounted) {
+            setState(() {
+              _walkerPhoneNumber = userDoc.data()!['phone'] as String?;
+            });
+          }
+          debugPrint("[WandererActiveWalkScreen] Fetched walker phone: $_walkerPhoneNumber");
+        } else {
+          debugPrint("[WandererActiveWalkScreen] Walker user document not found: $walkerId");
+        }
+      } catch (e) {
+        debugPrint("[WandererActiveWalkScreen] Error fetching walker phone: $e");
+      }
+      // --- [END NEW] ---
 
       // Start listening to the Walker's location in the Realtime Database
       final dbRef = FirebaseDatabase.instance.ref('locations/$walkerId');
@@ -155,6 +175,31 @@ class _WandererActiveWalkScreenState extends State<WandererActiveWalkScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Unable to open dialer. Please call 112 manually.')),
       );
+    }
+  }
+
+  // --- [NEW] Call Walker ---
+  Future<void> _onCallTapped() async {
+    if (_walkerPhoneNumber == null || _walkerPhoneNumber!.isEmpty) {
+      debugPrint("[WandererActiveWalkScreen] No phone number available for walker.");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Walker\'s phone number is not available.')),
+        );
+      }
+      return;
+    }
+
+    final Uri phoneUri = Uri.parse('tel:$_walkerPhoneNumber');
+
+    if (await canLaunchUrl(phoneUri)) {
+      await launchUrl(phoneUri);
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Unable to open dialer. Please call $_walkerPhoneNumber manually.')),
+        );
+      }
     }
   }
 
@@ -290,16 +335,29 @@ class _WandererActiveWalkScreenState extends State<WandererActiveWalkScreen> {
                           boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 8)],
                         ),
                         child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceAround,
+                          // [MODIFIED] Now has 4 buttons
+                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                           children: [
-                            // [REMOVED] Call Button
                             TextButton.icon(
                               onPressed: () => _onMessageTapped(walkData),
                               icon: const Icon(Icons.chat_bubble_outline, color: Colors.blueAccent),
                               label: const Text("Chat", style: TextStyle(color: Colors.blueAccent)),
                             ),
-                            // Spacer to separate buttons, ensuring Cancel is clearly visible
-                            const SizedBox(width: 20),
+
+                            TextButton.icon(
+                              onPressed: _onCallTapped,
+                              icon: const Icon(Icons.call_outlined, color: Colors.green),
+                              label: const Text("Call", style: TextStyle(color: Colors.green)),
+                            ),
+
+                            // --- [NEW] SOS Button ---
+                            TextButton.icon(
+                              onPressed: _launchEmergencyCall,
+                              icon: const Icon(Icons.sos, color: Colors.red),
+                              label: const Text("SOS", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+                            ),
+                            // --- [END NEW] ---
+
                             // [MODIFIED] Show loader when cancelling
                             _isCancelling
                                 ? const Padding(
@@ -311,7 +369,6 @@ class _WandererActiveWalkScreenState extends State<WandererActiveWalkScreen> {
                               icon: const Icon(Icons.cancel, color: Colors.red),
                               label: const Text("Cancel", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
                             ),
-                            const SizedBox(width: 20),
                           ],
                         ),
                       ),
@@ -328,13 +385,7 @@ class _WandererActiveWalkScreenState extends State<WandererActiveWalkScreen> {
             foregroundColor: Colors.white,
             automaticallyImplyLeading: false,
           ),
-          floatingActionButton: FloatingActionButton.extended(
-            heroTag: 'SOS_Wanderer',
-            onPressed: _launchEmergencyCall,
-            icon: const Icon(Icons.sos, color: Colors.white),
-            label: const Text('SOS', style: TextStyle(color: Colors.white)),
-            backgroundColor: Colors.red,
-          ),
+          // [REMOVED] FloatingActionButton
         );
       },
     );
@@ -408,7 +459,7 @@ class _WandererActiveWalkScreenState extends State<WandererActiveWalkScreen> {
           finalDistanceKm: 0.0
       );
 
-    } catch (e, stackTrace) { // [FIXED] Added stackTrace variable
+    } catch (e, stackTrace) {
       debugPrint("Error ending walk as Wanderer: $e");
       debugPrint(stackTrace.toString());
       if(mounted) {

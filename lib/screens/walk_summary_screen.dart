@@ -28,6 +28,10 @@ class _WalkSummaryScreenState extends State<WalkSummaryScreen> {
   int _currentRating = 0; // State for the selected rating (1 to 5)
   bool _isSubmitting = false; // State for feedback submission
 
+  // [NEW] State for donation checkbox
+  bool _addDonation = false;
+  final double _donationAmount = 0.87;
+
   // [NEW] Get current user ID
   final String? currentUserId = FirebaseAuth.instance.currentUser?.uid;
 
@@ -183,15 +187,46 @@ class _WalkSummaryScreenState extends State<WalkSummaryScreen> {
     );
   }
 
+  // [NEW] Helper method for the donation checkbox
+  Widget _buildDonationCheckbox() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 10.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Checkbox(
+            value: _addDonation,
+            onChanged: (bool? newValue) {
+              setState(() {
+                _addDonation = newValue ?? false;
+              });
+            },
+            activeColor: const Color(0xFFA8D8B9), // Match button color
+          ),
+          Flexible(
+            child: Text(
+              "Donate ₹$_donationAmount to support charity.",
+              style: TextStyle(fontSize: 15, color: Colors.grey[700]),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   // Helper method for payment button (now accepts context)
   Widget _buildPayNowButton(BuildContext context) {
     return ElevatedButton.icon(
       onPressed: () {
+        // [MODIFIED] Calculate final amount with optional donation
+        final double baseAmount = widget.finalStats['amountDue'] ?? 0.0;
+        final double finalAmount = baseAmount + (_addDonation ? _donationAmount : 0.0);
+
         Navigator.push(
             context,
             MaterialPageRoute(
                 builder: (context) => PaymentScreen(
-                  amount: widget.finalStats['amountDue'] ?? 0.0,
+                  amount: finalAmount, // [MODIFIED] Pass the final amount
                   walkId: widget.walkData.walkId,
                 )
             )
@@ -385,7 +420,7 @@ class _WalkSummaryScreenState extends State<WalkSummaryScreen> {
     return Scaffold(
       backgroundColor: Colors.grey[50],
       appBar: AppBar(
-        backgroundColor: const Color(0xFFf5f5f5),
+        backgroundColor: const Color(0xFFf5f5ff), // Typo fix: was f5f5f5
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () {
@@ -417,6 +452,9 @@ class _WalkSummaryScreenState extends State<WalkSummaryScreen> {
             // --- [MODIFIED] Role-Aware Section ---
             if (isWanderer) ...[
               // Show Payment and Feedback to the Wanderer
+
+              // [NEW] Donation checkbox added just above the pay button
+              _buildDonationCheckbox(),
               _buildPayNowButton(context),
               const SizedBox(height: 40),
               _buildFeedbackSection(context),

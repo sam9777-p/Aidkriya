@@ -94,8 +94,17 @@ class _GroupWalkDetailsScreenState extends State<GroupWalkDetailsScreen> {
     final currentUserId = _auth.currentUser?.uid;
 
     return Scaffold(
+      extendBodyBehindAppBar: true,
+
+      // 🔥 IMMERSIVE APP BAR ADDED
       appBar: AppBar(
-        title: const Text('Group Walk Details'),
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        elevation: 0,
+        title: const Text(
+          'Group Walk Details',
+          style: TextStyle(color: Colors.black),
+        ),
+        iconTheme: const IconThemeData(color: Colors.black),
       ),
       body: StreamBuilder<DocumentSnapshot>(
         stream: FirebaseFirestore.instance.collection('group_walks').doc(widget.walkId).snapshots(),
@@ -110,7 +119,8 @@ class _GroupWalkDetailsScreenState extends State<GroupWalkDetailsScreen> {
           final data = snapshot.data!.data() as Map<String, dynamic>;
           final walkerId = data['walkerId'] as String? ?? '';
           final walkerInfo = data['walkerInfo'] as Map<String, dynamic>? ?? {};
-          final participants = (data['participants'] as List<dynamic>?)?.map((p) => p as Map<String, dynamic>).toList() ?? [];
+          final participants =
+              (data['participants'] as List<dynamic>?)?.map((p) => p as Map<String, dynamic>).toList() ?? [];
           final participantIds = participants.map((p) => p['userId'] as String).toList();
 
           final bool isWalker = currentUserId == walkerId;
@@ -125,103 +135,139 @@ class _GroupWalkDetailsScreenState extends State<GroupWalkDetailsScreen> {
             children: [
               Expanded(
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(16.0),
+                  padding: const EdgeInsets.only(top: 0, left: 16, right: 16, bottom: 16),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Container(
-                        height: 200,
-                        decoration: BoxDecoration(borderRadius: BorderRadius.circular(12)),
-                        child: GoogleMap(
-                          initialCameraPosition: CameraPosition(
-                            target: LatLng(
-                              (data['meetingPoint'] as GeoPoint).latitude,
-                              (data['meetingPoint'] as GeoPoint).longitude,
-                            ),
-                            zoom: 15,
-                          ),
-                          markers: {
-                            Marker(
-                              markerId: const MarkerId('meetup'),
-                              position: LatLng(
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(0),
+                        child: Container(
+                          height: 260,
+                          child: GoogleMap(
+                            initialCameraPosition: CameraPosition(
+                              target: LatLng(
                                 (data['meetingPoint'] as GeoPoint).latitude,
                                 (data['meetingPoint'] as GeoPoint).longitude,
                               ),
+                              zoom: 15,
                             ),
-                          },
+                            markers: {
+                              Marker(
+                                markerId: const MarkerId('meetup'),
+                                position: LatLng(
+                                  (data['meetingPoint'] as GeoPoint).latitude,
+                                  (data['meetingPoint'] as GeoPoint).longitude,
+                                ),
+                              ),
+                            },
+                          ),
                         ),
                       ),
-                      const SizedBox(height: 16),
-                      Text(data['title'], style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+
+                      const SizedBox(height: 24),
+
+                      Text(data['title'],
+                          style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold)),
                       const SizedBox(height: 8),
+
                       ListTile(
                         contentPadding: EdgeInsets.zero,
-                        leading: WalkerAvatar(imageUrl: walkerInfo['imageUrl'], size: 40),
+                        leading: WalkerAvatar(imageUrl: walkerInfo['imageUrl'], size: 45),
                         title: Text("Led by ${walkerInfo['fullName']}"),
                       ),
-                      const Divider(height: 24),
-                      InfoRow(icon: Icons.calendar_today, title: 'Date', value: DateFormat('EEE, MMM d, yyyy').format(scheduledTime)),
+                      const Divider(),
+
+                      InfoRow(icon: Icons.calendar_today, title: 'Date', value: DateFormat('EEE, MMM d').format(scheduledTime)),
                       InfoRow(icon: Icons.access_time, title: 'Time', value: DateFormat('h:mm a').format(scheduledTime)),
                       InfoRow(icon: Icons.timelapse, title: 'Duration', value: data['duration']),
                       InfoRow(icon: Icons.group, title: 'Slots', value: "${data['participantCount']} / ${data['maxParticipants']}"),
                       InfoRow(icon: Icons.payments, title: 'Price', value: "₹${(data['price'] as num).toDouble().toStringAsFixed(2)} per person"),
-                      const Divider(height: 24),
 
-                      Text('Participants (${data['participantCount']})', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                      const Divider(),
+                      const SizedBox(height: 12),
+
+                      Text('Participants (${data['participantCount']})',
+                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                       const SizedBox(height: 8),
+
                       if (participants.isEmpty)
-                        const Text('Be the first to join!', style: TextStyle(color: Colors.grey)),
+                        const Text("Be the first to join!", style: TextStyle(color: Colors.grey)),
+
                       if (!isWalker && !hasJoined)
-                        const Text('Join the walk to see other participants.', style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic)),
+                        const Text("Join to see other participants.",
+                            style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic)),
 
                       if (isWalker || hasJoined)
                         ...participants.map((p) => ParticipantTile(
                           name: p['name'],
                           imageUrl: p['imageUrl'],
-                          onTap: () {
-                            _showProfileDialog(context, p);
-                          },
+                          onTap: () => _showProfileDialog(context, p),
                         )),
                     ],
                   ),
                 ),
               ),
 
+              // FOOTER BUTTONS (unchanged)
               Container(
                 padding: const EdgeInsets.all(16).copyWith(bottom: 32),
                 decoration: BoxDecoration(
-                    color: Theme.of(context).scaffoldBackgroundColor,
-                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 8, offset: const Offset(0, -2))]
+                  color: Theme.of(context).scaffoldBackgroundColor,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 8,
+                      offset: const Offset(0, -2),
+                    )
+                  ],
                 ),
                 child: Column(
                   children: [
                     if (isWalker && canStart)
                       ElevatedButton(
                         onPressed: () => _onStartWalkPressed(walkerId, participantIds),
-                        style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 50), backgroundColor: Colors.green),
-                        child: const Text('Start Walk Now', style: TextStyle(color: Colors.white, fontSize: 16)),
+                        style: ElevatedButton.styleFrom(
+                            minimumSize: const Size(double.infinity, 50),
+                            backgroundColor: Colors.green),
+                        child: const Text('Start Walk Now',
+                            style: TextStyle(color: Colors.white, fontSize: 16)),
                       )
                     else if (isWalker)
-                      Text('You are leading this walk. You can start it 15 minutes before the scheduled time.', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey[700]))
+                      Text(
+                        'You can start the walk 15 min before scheduled time.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.grey[700]),
+                      )
                     else if (hasJoined)
                         ElevatedButton.icon(
                           onPressed: () => _onChatPressed(data['title']),
-                          style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 50), backgroundColor: Colors.blueAccent),
                           icon: const Icon(Icons.chat, color: Colors.white),
-                          label: const Text('Open Group Chat', style: TextStyle(color: Colors.white, fontSize: 16)),
+                          label: const Text('Open Group Chat',
+                              style: TextStyle(color: Colors.white, fontSize: 16)),
+                          style: ElevatedButton.styleFrom(
+                            minimumSize: const Size(double.infinity, 50),
+                            backgroundColor: Colors.blueAccent,
+                          ),
                         )
                       else if (isFull)
-                        // [FIX] Removed 'const' here
                           ElevatedButton(
                             onPressed: null,
-                            style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 50)),
+                            style: ElevatedButton.styleFrom(
+                                minimumSize: const Size(double.infinity, 50)),
                             child: const Text('This Walk is Full', style: TextStyle(fontSize: 16)),
                           )
                         else if (canJoin && _currentUserModel != null)
                             ElevatedButton(
-                              onPressed: () => _onJoinWalkPressed((data['price'] as num).toDouble(), data['title'], walkerInfo),
-                              style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 50), backgroundColor: const Color(0xFF6BCBA6)),
-                              child: Text('Join & Pay ₹${(data['price'] as num).toDouble().toStringAsFixed(2)}', style: const TextStyle(color: Colors.white, fontSize: 16)),
+                              onPressed: () => _onJoinWalkPressed(
+                                  (data['price'] as num).toDouble(), data['title'], walkerInfo),
+                              style: ElevatedButton.styleFrom(
+                                minimumSize: const Size(double.infinity, 50),
+                                backgroundColor: const Color(0xFF6BCBA6),
+                              ),
+                              child: Text(
+                                "Join & Pay ₹${(data['price'] as num).toDouble().toStringAsFixed(2)}",
+                                style: const TextStyle(color: Colors.white, fontSize: 16),
+                              ),
                             )
                           else
                             const Center(child: CircularProgressIndicator()),
@@ -247,10 +293,7 @@ class _GroupWalkDetailsScreenState extends State<GroupWalkDetailsScreen> {
             const SizedBox(height: 16),
             Text(participant['name'], style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
             const SizedBox(height: 16),
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Close'),
-            )
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))
           ],
         ),
       ),
@@ -267,7 +310,7 @@ class InfoRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
         children: [
           Icon(icon, color: Colors.grey[600], size: 20),
@@ -285,6 +328,7 @@ class ParticipantTile extends StatelessWidget {
   final String name;
   final String? imageUrl;
   final VoidCallback onTap;
+
   const ParticipantTile({super.key, required this.name, this.imageUrl, required this.onTap});
 
   @override
