@@ -8,6 +8,8 @@ class Walker {
   final double longitude;
   final double age;
   final String bio;
+  final double matchScore;
+  final List<String> commonInterests;
 
   Walker({
     required this.id,
@@ -19,6 +21,8 @@ class Walker {
     required this.longitude,
     required this.age,
     required this.bio,
+    this.matchScore = 0.0, // Default score
+    this.commonInterests = const [],
   });
 
   /// Convert Walker to Map for Firestore

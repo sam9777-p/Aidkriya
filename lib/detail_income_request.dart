@@ -88,31 +88,59 @@ class _DetailIncomeRequestState extends State<DetailIncomeRequest> {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F5F5),
       appBar: _buildAppBar(),
-      body: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildMapSection(), // Fixed map section
-            const SizedBox(height: 16),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24.0),
-              child: Column(
-                children: [
-                  _buildSenderInfoCard(),
-                  const SizedBox(height: 24),
-                  _buildWalkDetailsSection(),
-                  const SizedBox(height: 32),
-                  if (widget.displayRequest.status == 'Pending' ||
-                      widget.displayRequest.status == 'Scheduled')
-                    _buildActionButtons()
-                  else
-                    _buildStatusIndicator(),
-                  const SizedBox(height: 24),
-                ],
+      // [MODIFIED] Wrap body in a Stack to show overlay
+      body: Stack(
+        children: [
+          SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildMapSection(), // Fixed map section
+                const SizedBox(height: 16),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                  child: Column(
+                    children: [
+                      _buildSenderInfoCard(),
+                      const SizedBox(height: 24),
+                      _buildWalkDetailsSection(),
+                      const SizedBox(height: 32),
+                      if (widget.displayRequest.status == 'Pending' ||
+                          widget.displayRequest.status == 'Scheduled')
+                        _buildActionButtons()
+                      else
+                        _buildStatusIndicator(),
+                      const SizedBox(height: 24),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // [NEW] Full-screen loading overlay
+          if (_isAccepting)
+            Container(
+              color: Colors.black.withOpacity(0.5),
+              child: const Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    CircularProgressIndicator(color: Colors.white),
+                    SizedBox(height: 16),
+                    Text(
+                      'Accepting Walk...',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                        decoration: TextDecoration.none, // Ensure no underlines
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ],
-        ),
+        ],
       ),
     );
   }
@@ -252,38 +280,52 @@ class _DetailIncomeRequestState extends State<DetailIncomeRequest> {
   }
 
   void _showRejectConfirmation() {
+    // [MODIFIED] Use StatefulBuilder to manage dialog's internal state
     showDialog(
       context: context,
-      barrierDismissible: !_isRejecting,
-      builder: (context) => AlertDialog(
-        title: const Text('Reject Walk Request'),
-        content: const Text(
-          'Are you sure you want to reject this walk request?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: _isRejecting ? null : () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: _isRejecting ? null : _onRejectPressed,
-            child: _isRejecting
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Text('Reject', style: TextStyle(color: Colors.red)),
-          ),
-        ],
+      barrierDismissible: !_isRejecting, // Use screen-level blocking
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            title: const Text('Reject Walk Request'),
+            content: const Text(
+              'Are you sure you want to reject this walk request?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: _isRejecting ? null : () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: _isRejecting
+                    ? null
+                    : () async {
+                        // Call _onRejectPressed, but manage dialog state
+                        setDialogState(() {
+                          _isRejecting = true;
+                        });
+                        await _onRejectPressed(context); // Pass dialog context
+                        // No need to set state false, dialog will be gone
+                      },
+                child: _isRejecting
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('Reject', style: TextStyle(color: Colors.red)),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
 
-  Future<void> _onRejectPressed() async {
-    if (_isRejecting || _isAccepting) return;
-
-    setState(() => _isRejecting = true);
+  // [MODIFIED] To accept dialog context
+  Future<void> _onRejectPressed(BuildContext dialogContext) async {
+    // No need for 'if (_isRejecting || _isAccepting) return;'
+    // state is already set by dialog
 
     try {
       bool success = await _walkService.declineRequest(
@@ -291,7 +333,7 @@ class _DetailIncomeRequestState extends State<DetailIncomeRequest> {
       );
       if (!mounted) return;
 
-      Navigator.pop(context);
+      Navigator.pop(dialogContext); // Close the dialog
 
       if (success) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -300,59 +342,82 @@ class _DetailIncomeRequestState extends State<DetailIncomeRequest> {
             backgroundColor: Colors.orange,
           ),
         );
-        Navigator.pop(context);
+        Navigator.pop(context); // Pop the detail screen
       } else {
         _showErrorSnackBar('Failed to reject request. Please try again.');
       }
     } catch (e) {
       debugPrint("[DetailIncomeRequest] Error rejecting request: $e");
       if (mounted) {
-        Navigator.pop(context);
+        Navigator.pop(dialogContext); // Close the dialog on error
         _showErrorSnackBar('An error occurred: $e');
       }
     } finally {
       if (mounted) {
-        setState(() => _isRejecting = false);
+        setState(() => _isRejecting = false); // Reset screen-level state
       }
     }
   }
 
   void _showAcceptConfirmation() {
+    // [MODIFIED] Use StatefulBuilder to manage dialog's internal state
     showDialog(
       context: context,
-      barrierDismissible: !_isAccepting,
-      builder: (context) => AlertDialog(
-        title: const Text('Accept Walk Request'),
-        content: const Text(
-          'Accepting this will notify the sender and may decline other requests from them. Proceed?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: _isAccepting ? null : () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: _isAccepting ? null : _onAcceptPressed,
-            child: _isAccepting
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Text(
-                    'Accept',
-                    style: TextStyle(color: Color(0xFF6BCBA6)),
-                  ),
-          ),
-        ],
+      barrierDismissible: !_isAccepting, // Use screen-level blocking
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          bool isDialogLoading =
+              false; // [NEW] Internal state for dialog button
+
+          return AlertDialog(
+            title: const Text('Accept Walk Request'),
+            content: const Text(
+              'Accepting this will notify the sender and may decline other requests from them. Proceed?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: (isDialogLoading || _isAccepting)
+                    ? null
+                    : () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: (isDialogLoading || _isAccepting)
+                    ? null
+                    : () async {
+                        setDialogState(() {
+                          isDialogLoading = true; // Show spinner in button
+                        });
+                        // [MODIFIED] Call _onAcceptPressed and pass dialog context
+                        await _onAcceptPressed(context);
+                        // No need to set state false, dialog will be gone
+                      },
+                child:
+                    isDialogLoading // Use internal state
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text(
+                        'Accept',
+                        style: TextStyle(color: Color(0xFF6BCBA6)),
+                      ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
 
-  Future<void> _onAcceptPressed() async {
+  // [MODIFIED] To accept dialog context
+  Future<void> _onAcceptPressed(BuildContext dialogContext) async {
     if (_isRejecting || _isAccepting) return;
 
-    setState(() => _isAccepting = true);
+    // [MODIFIED] Pop dialog *first* and show full-screen loader
+    Navigator.pop(dialogContext); // Close the dialog
+    setState(() => _isAccepting = true); // Show full-screen loader
 
     debugPrint("========================================");
     debugPrint("[DetailIncomeRequest] Starting accept process");
@@ -384,7 +449,7 @@ class _DetailIncomeRequestState extends State<DetailIncomeRequest> {
         return;
       }
 
-      Navigator.pop(context); // Close the dialog
+      // [REMOVED] Navigator.pop(context); // Close the dialog (already done)
 
       if (success) {
         debugPrint("[DetailIncomeRequest] ✅ Request accepted successfully");
@@ -434,7 +499,7 @@ class _DetailIncomeRequestState extends State<DetailIncomeRequest> {
             "[DetailIncomeRequest] Scheduled walk - just popping back",
           );
           if (mounted) {
-            Navigator.of(context).pop();
+            Navigator.of(context).pop(); // Pop detail screen
           }
         }
       } else {
@@ -442,7 +507,7 @@ class _DetailIncomeRequestState extends State<DetailIncomeRequest> {
         _showErrorSnackBar(
           'Failed to accept request. It might have been cancelled or an error occurred.',
         );
-        if (mounted) Navigator.pop(context);
+        if (mounted) Navigator.pop(context); // Pop detail screen on failure
       }
     } catch (e, stackTrace) {
       debugPrint("========================================");
@@ -453,12 +518,12 @@ class _DetailIncomeRequestState extends State<DetailIncomeRequest> {
       debugPrint("========================================");
 
       if (mounted) {
-        Navigator.pop(context);
+        // [REMOVED] Navigator.pop(context); // No dialog to pop
         _showErrorSnackBar('An error occurred: $e');
       }
     } finally {
       if (mounted) {
-        setState(() => _isAccepting = false);
+        setState(() => _isAccepting = false); // Hide full-screen loader
       }
     }
   }
