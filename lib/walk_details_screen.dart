@@ -71,10 +71,14 @@ class _WalkDetailsScreenState extends State<WalkDetailsScreen> {
               final walkData = snapshot.data!.data() as Map<String, dynamic>;
               final currentUserId = FirebaseAuth.instance.currentUser!.uid;
 
-              // Determine the other participant
+              // Determine the other participant & current user role
               final senderId = walkData['senderId'];
               final recipientId = walkData['recipientId'];
-              if (currentUserId == senderId) {
+
+              // [NEW] Check if current user is the Wanderer (Sender)
+              final bool isWanderer = (currentUserId == senderId);
+
+              if (isWanderer) {
                 otherUserId = recipientId;
               } else {
                 otherUserId = senderId;
@@ -82,8 +86,11 @@ class _WalkDetailsScreenState extends State<WalkDetailsScreen> {
 
               final walkStatus = walkData['status'] ?? 'unknown';
               final duration = walkData['duration'] ?? '';
-              final distance =
-              (walkData['walkerProfile']?['distance'] ?? 0).toString();
+              final distance = (walkData['walkerProfile']?['distance'] ?? 0).toString();
+
+              // Extract earnings/amount
+              final double totalEarnings = (walkData['amount'] ?? walkData['earnings'] ?? walkData['price'] ?? 0).toDouble();
+
               final updatedAt = walkData['updatedAt'] != null
                   ? (walkData['updatedAt'] as Timestamp).toDate()
                   : null;
@@ -95,11 +102,12 @@ class _WalkDetailsScreenState extends State<WalkDetailsScreen> {
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     // Walk info card
-                    _buildWalkInfoCard(walkStatus, duration, distance, updatedAt),
+                    // [MODIFIED] Passing isWanderer boolean
+                    _buildWalkInfoCard(walkStatus, duration, distance, updatedAt, totalEarnings, isWanderer),
 
                     const SizedBox(height: 25),
 
-                    // Walker details section
+                    // Walker/Partner details section
                     if (otherUserId != null)
                       StreamBuilder<DocumentSnapshot>(
                         stream: FirebaseFirestore.instance
@@ -258,7 +266,7 @@ class _WalkDetailsScreenState extends State<WalkDetailsScreen> {
   // -------------------
 
   Widget _buildWalkInfoCard(
-      String status, String duration, String distance, DateTime? updatedAt) {
+      String status, String duration, String distance, DateTime? updatedAt, double earnings, bool isWanderer) {
     Color statusColor;
     Color textColor;
 
@@ -319,6 +327,25 @@ class _WalkDetailsScreenState extends State<WalkDetailsScreen> {
           const SizedBox(height: 10),
           _infoRow(Icons.timer_outlined, 'Duration', duration),
           _infoRow(Icons.route_outlined, 'Distance', '$distance km'),
+
+          // [MODIFIED] Conditional Display based on Role
+          if (earnings > 0) ...[
+            if (isWanderer)
+            // Wanderer sees 2% Charity
+              _infoRow(
+                  Icons.volunteer_activism,
+                  'Charity (2%)',
+                  '₹${(earnings * 0.02).toStringAsFixed(2)}'
+              )
+            else
+            // Walker sees original Earnings
+              _infoRow(
+                  Icons.monetization_on_outlined,
+                  'Earnings',
+                  '₹${earnings.toStringAsFixed(2)}'
+              ),
+          ],
+
           if (updatedAt != null)
             _infoRow(Icons.update, 'Updated',
                 '${updatedAt.toLocal().toString().substring(0, 16)}'),

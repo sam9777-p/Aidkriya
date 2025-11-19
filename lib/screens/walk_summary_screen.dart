@@ -1,15 +1,14 @@
 // lib/screens/walk_summary_screen.dart
 
 import 'package:aidkriya_walker/model/incoming_request_display.dart';
-import 'package:cloud_firestore/cloud_firestore.dart'; // [NEW] Import Firestore
-import 'package:firebase_auth/firebase_auth.dart'; // [NEW] Import Auth
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../home_screen.dart';
 import '../payment_screen.dart';
 
 class WalkSummaryScreen extends StatefulWidget {
-  // [CHANGE] Changed to StatefulWidget
   final IncomingRequestDisplay walkData;
   final Map<String, dynamic> finalStats;
 
@@ -24,18 +23,33 @@ class WalkSummaryScreen extends StatefulWidget {
 }
 
 class _WalkSummaryScreenState extends State<WalkSummaryScreen> {
-  // [NEW] State class
-  int _currentRating = 0; // State for the selected rating (1 to 5)
-  bool _isSubmitting = false; // State for feedback submission
+  int _currentRating = 0;
+  bool _isSubmitting = false;
 
-  // [NEW] State for donation checkbox
-  bool _addDonation = false;
-  final double _donationAmount = 0.87;
-
-  // [NEW] Get current user ID
   final String? currentUserId = FirebaseAuth.instance.currentUser?.uid;
 
-  // --- Feedback Submission Logic ---
+
+
+  Future<void> _updateWandererSocialImpact(double amountPaid) async {
+    // Get the current user (Wanderer) ID
+    final String? wandererId = FirebaseAuth.instance.currentUser?.uid;
+
+    if (wandererId == null) return;
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(wandererId)
+          .update({
+        // Incrementing 'earnings' to represent Social Impact/Contribution
+        'earnings': FieldValue.increment(amountPaid),
+      });
+
+      debugPrint("Social impact (earnings) updated for wanderer: $wandererId");
+    } catch (e) {
+      debugPrint("Error updating wanderer impact: $e");
+    }
+  }
 
   Future<void> _onSubmitFeedback(BuildContext context) async {
     if (_currentRating == 0) {
@@ -52,49 +66,35 @@ class _WalkSummaryScreenState extends State<WalkSummaryScreen> {
     // The Walker is the recipient of the walk request
     final String walkerId = widget.walkData.recipientId;
 
-    // 1. Prepare references
     final walkerDocRef = FirebaseFirestore.instance
         .collection('users')
         .doc(walkerId);
 
     try {
-      // 2. Transactionally update the Walker's rating
       await FirebaseFirestore.instance.runTransaction((transaction) async {
         final snapshot = await transaction.get(walkerDocRef);
-
         final data = snapshot.data();
 
-        // Define default values if the columns do not exist
         final double currentRatingSum =
             (data?['totalRatingSum'] as num?)?.toDouble() ?? 0.0;
         final int currentRatingCount = (data?['ratingCount'] as int?) ?? 0;
 
-        // 3. Calculation
         final double newRatingSum = currentRatingSum + _currentRating;
         final int newRatingCount = currentRatingCount + 1;
         final double newAvgRating = newRatingSum / newRatingCount;
 
-        // 4. Update the document
         transaction.update(walkerDocRef, {
-          'rating': double.parse(
-            newAvgRating.toStringAsFixed(1),
-          ), // Update the final 'rating' field
-          'totalRatingSum': newRatingSum, // Update the cumulative sum
-          'ratingCount': newRatingCount, // Update the count
-          'lastRatedWalkId': widget
-              .walkData
-              .walkId, // Optional: Prevent double-rating from the same walk
+          'rating': double.parse(newAvgRating.toStringAsFixed(1)),
+          'totalRatingSum': newRatingSum,
+          'ratingCount': newRatingCount,
+          'lastRatedWalkId': widget.walkData.walkId,
         });
       });
 
-      // Success
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Feedback submitted and rating updated!'),
-          ),
+          const SnackBar(content: Text('Feedback submitted and rating updated!')),
         );
-        // Navigate away after successful submission
         Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(builder: (context) => const HomeScreen()),
               (Route<dynamic> route) => false,
@@ -114,9 +114,8 @@ class _WalkSummaryScreenState extends State<WalkSummaryScreen> {
     }
   }
 
-  // --- Build Methods (Updated to be methods of the State class) ---
+  // --- Build Methods ---
 
-  // Helper method to build stat cards (Time/Distance)
   Widget _buildStatCard(String title, String value, IconData icon) {
     return Expanded(
       child: Container(
@@ -154,7 +153,6 @@ class _WalkSummaryScreenState extends State<WalkSummaryScreen> {
     );
   }
 
-  // Helper method to build the Amount Due card
   Widget _buildAmountDueCard(String amount) {
     return Container(
       padding: const EdgeInsets.all(20),
@@ -187,26 +185,24 @@ class _WalkSummaryScreenState extends State<WalkSummaryScreen> {
     );
   }
 
-  // [NEW] Helper method for the donation checkbox
-  Widget _buildDonationCheckbox() {
+  // [NEW] Widget to display charity note instead of checkbox
+  Widget _buildCharityNote() {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 10.0),
+      padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 16.0),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Checkbox(
-            value: _addDonation,
-            onChanged: (bool? newValue) {
-              setState(() {
-                _addDonation = newValue ?? false;
-              });
-            },
-            activeColor: const Color(0xFFA8D8B9), // Match button color
-          ),
+          Icon(Icons.volunteer_activism, color: Colors.pink[300], size: 20),
+          const SizedBox(width: 8),
           Flexible(
             child: Text(
-              "Donate ₹$_donationAmount to support charity.",
-              style: TextStyle(fontSize: 15, color: Colors.grey[700]),
+              "Note: 2% of this amount goes to charity.",
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.grey[600],
+                fontStyle: FontStyle.italic,
+              ),
             ),
           ),
         ],
@@ -214,23 +210,39 @@ class _WalkSummaryScreenState extends State<WalkSummaryScreen> {
     );
   }
 
-  // Helper method for payment button (now accepts context)
   Widget _buildPayNowButton(BuildContext context) {
     return ElevatedButton.icon(
-      onPressed: () {
-        // [MODIFIED] Calculate final amount with optional donation
-        final double baseAmount = widget.finalStats['amountDue'] ?? 0.0;
-        final double finalAmount = baseAmount + (_addDonation ? _donationAmount : 0.0);
+      onPressed: () async {
+        // [MODIFIED] Only use base amount. No extra donation added.
+        final double amountToPay = widget.finalStats['amountDue'] ?? 0.0;
 
-        Navigator.push(
-            context,
-            MaterialPageRoute(
-                builder: (context) => PaymentScreen(
-                  amount: finalAmount, // [MODIFIED] Pass the final amount
-                  walkId: widget.walkData.walkId,
-                )
-            )
+        final bool? paymentSuccess = await Navigator.push<bool>(
+          context,
+          MaterialPageRoute(
+            builder: (context) => PaymentScreen(
+              amount: amountToPay,
+              walkId: widget.walkData.walkId,
+            ),
+          ),
         );
+
+        if (paymentSuccess == true) {
+          // Update Social Impact with the amount paid
+          await _updateWandererSocialImpact(amountToPay);
+
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Payment successful! Your social impact score has increased.'),
+                backgroundColor: Colors.green,
+              ),
+            );
+            Navigator.of(context).pushAndRemoveUntil(
+              MaterialPageRoute(builder: (context) => const HomeScreen()),
+                  (Route<dynamic> route) => false,
+            );
+          }
+        }
       },
       style: ElevatedButton.styleFrom(
         backgroundColor: const Color(0xFFA8D8B9),
@@ -244,9 +256,9 @@ class _WalkSummaryScreenState extends State<WalkSummaryScreen> {
         style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
       ),
     );
+
   }
 
-  // Helper method to build the feedback section (now accepts context)
   Widget _buildFeedbackSection(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -256,7 +268,6 @@ class _WalkSummaryScreenState extends State<WalkSummaryScreen> {
           style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 12),
-        // Star Rating Selection
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: List.generate(5, (index) {
@@ -323,7 +334,6 @@ class _WalkSummaryScreenState extends State<WalkSummaryScreen> {
     );
   }
 
-  // [NEW] Widget for Walker's view
   Widget _buildWalkerSummaryView(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -361,8 +371,6 @@ class _WalkSummaryScreenState extends State<WalkSummaryScreen> {
     );
   }
 
-
-  // Helper method to build the contribution section
   Widget _buildContributionSection(String distance, String contribution) {
     return Container(
       padding: const EdgeInsets.all(20),
@@ -413,14 +421,12 @@ class _WalkSummaryScreenState extends State<WalkSummaryScreen> {
     final amountDueStr = "₹${amountDue.toStringAsFixed(2)}";
     final contributionStr = "₹${contributionAmount.toStringAsFixed(0)}";
 
-    // [NEW] Check the user's role in this walk
-    // The "sender" is the Wanderer, "recipient" is the Walker
     final bool isWanderer = (currentUserId == widget.walkData.senderId);
 
     return Scaffold(
       backgroundColor: Colors.grey[50],
       appBar: AppBar(
-        backgroundColor: const Color(0xFFf5f5ff), // Typo fix: was f5f5f5
+        backgroundColor: const Color(0xFFf5f5ff),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () {
@@ -449,21 +455,16 @@ class _WalkSummaryScreenState extends State<WalkSummaryScreen> {
             _buildAmountDueCard(amountDueStr),
             const SizedBox(height: 20),
 
-            // --- [MODIFIED] Role-Aware Section ---
             if (isWanderer) ...[
-              // Show Payment and Feedback to the Wanderer
-
-              // [NEW] Donation checkbox added just above the pay button
-              _buildDonationCheckbox(),
+              // [MODIFIED] Replaced Checkbox with static Charity Note
+              _buildCharityNote(),
               _buildPayNowButton(context),
               const SizedBox(height: 40),
               _buildFeedbackSection(context),
             ] else ...[
-              // Show a summary message to the Walker
               const SizedBox(height: 20),
               _buildWalkerSummaryView(context),
             ],
-            // --- End Role-Aware Section ---
 
             const SizedBox(height: 40),
             _buildContributionSection(distanceStr, contributionStr),

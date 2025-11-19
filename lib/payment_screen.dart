@@ -3,7 +3,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:razorpay_flutter/razorpay_flutter.dart';
-import 'home_screen.dart';
+// Note: We don't need home_screen.dart import anymore because we pop back
+// import 'home_screen.dart';
 
 class PaymentScreen extends StatefulWidget {
   final double amount;
@@ -47,7 +48,8 @@ class _PaymentScreenState extends State<PaymentScreen>
         timer.cancel();
         if (!_isPaymentDone && mounted) {
           await _markAsCancelled("Timeout");
-          _redirectToHome();
+          // Close screen with failure
+          if(mounted) Navigator.pop(context, false);
         }
       } else {
         setState(() => _remainingSeconds--);
@@ -63,13 +65,6 @@ class _PaymentScreenState extends State<PaymentScreen>
     super.dispose();
   }
 
-  void _redirectToHome() {
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(builder: (_) => const HomeScreen()),
-          (route) => false,
-    );
-  }
   void _openPaymentSheet(String method) async {
     final options = {
       'key': 'rzp_test_RZP2JKgTnlbx5M',
@@ -88,7 +83,8 @@ class _PaymentScreenState extends State<PaymentScreen>
     }
   }
 
-  Future<void> _setPaymentSuspicionStatus(bool isSuspicious, {String? walkId, double? amount}) async {
+  Future<void> _setPaymentSuspicionStatus(bool isSuspicious,
+      {String? walkId, double? amount}) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
@@ -97,11 +93,9 @@ class _PaymentScreenState extends State<PaymentScreen>
     };
 
     if (isSuspicious) {
-      // Store the details of the walk that caused the suspicion
       updateData['suspiciousWalkId'] = walkId;
       updateData['suspiciousAmount'] = amount;
     } else {
-      // Clear the details upon successful payment
       updateData['suspiciousWalkId'] = FieldValue.delete();
       updateData['suspiciousAmount'] = FieldValue.delete();
     }
@@ -113,54 +107,68 @@ class _PaymentScreenState extends State<PaymentScreen>
   }
 
   Future<void> _handlePaymentSuccess(PaymentSuccessResponse response) async {
+    // 1. STOP TIMER IMMEDIATELY
+    _timer.cancel();
+
     setState(() => _isPaymentDone = true);
 
-    await FirebaseFirestore.instance
-        .collection('accepted_walks')
-        .doc(widget.walkId)
-        .update({
-      'paymentStatus': 'Paid',
-      'status': 'Completed',
-    });
-
-    await _setPaymentSuspicionStatus(false);
-
-    final walkDoc = await FirebaseFirestore.instance
-        .collection('accepted_walks')
-        .doc(widget.walkId)
-        .get();
-    final walkData = walkDoc.data() ?? {};
-    final recipientId = walkData['recipientId'] as String?;
-
-    if (recipientId != null) {
+    try {
+      // 2. Update Walk Status
       await FirebaseFirestore.instance
-          .collection('users')
-          .doc(recipientId)
-          .update({'earnings': FieldValue.increment(widget.amount)});
-    }
+          .collection('accepted_walks')
+          .doc(widget.walkId)
+          .update({
+        'paymentStatus': 'Paid',
+        'status': 'Completed',
+      });
 
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("✅ Payment Successful! Redirecting...")),
-      );
-      Future.delayed(const Duration(seconds: 2), _redirectToHome);
+      await _setPaymentSuspicionStatus(false);
+
+      // 3. Update WALKER Earnings (Recipient)
+      final walkDoc = await FirebaseFirestore.instance
+          .collection('accepted_walks')
+          .doc(widget.walkId)
+          .get();
+      final walkData = walkDoc.data() ?? {};
+      final recipientId = walkData['recipientId'] as String?;
+
+      if (recipientId != null) {
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(recipientId)
+            .update({'earnings': FieldValue.increment(widget.amount)});
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("✅ Payment Successful!")),
+        );
+
+        // 4. CRITICAL: Return TRUE to WalkSummaryScreen
+        // This allows WalkSummaryScreen to run the Social Impact logic
+        Navigator.pop(context, true);
+      }
+    } catch (e) {
+      debugPrint("Error in payment success handler: $e");
     }
   }
 
   Future<void> _handlePaymentError(PaymentFailureResponse response) async {
     if (!_isPaymentDone) {
+      // Only cancel if we haven't already succeeded
       await _markAsCancelled("UserCancelled");
-      await _setPaymentSuspicionStatus(true, walkId: widget.walkId, amount: widget.amount);
+      await _setPaymentSuspicionStatus(true,
+          walkId: widget.walkId, amount: widget.amount);
     }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text("❌ Payment failed: ${response.message ?? 'Cancelled'}"),
-      ),
-    );
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("❌ Payment failed: ${response.message ?? 'Cancelled'}"),
+        ),
+      );
+    }
   }
-
-
 
   void _handleExternalWallet(ExternalWalletResponse response) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -179,11 +187,12 @@ class _PaymentScreenState extends State<PaymentScreen>
         'cancelReason': reason,
         'cancelledAt': FieldValue.serverTimestamp(),
       });
-      debugPrint("🟡 Payment failed ($reason) for walk ${widget.walkId}. User marked as suspicious.");
+      debugPrint("🟡 Payment failed ($reason).");
     } catch (e) {
       debugPrint("Error marking as cancelled: $e");
     }
   }
+
   @override
   Widget build(BuildContext context) {
     final minutes = (_remainingSeconds ~/ 60).toString().padLeft(2, '0');
@@ -212,7 +221,7 @@ class _PaymentScreenState extends State<PaymentScreen>
                   const Icon(Icons.timer, color: Color(0xFFA8D8B9), size: 32),
                   const SizedBox(height: 8),
                   Text(
-                    "Auto redirecting in $minutes:$seconds",
+                    "Session expires in $minutes:$seconds",
                     style: const TextStyle(
                       fontSize: 16,
                       color: Colors.black87,
