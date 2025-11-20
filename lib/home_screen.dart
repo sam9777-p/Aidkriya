@@ -533,7 +533,18 @@ class _HomeScreenState extends State<HomeScreen> {
       Expanded(child: StatsCard(title: 'Walks\nCompleted', value: (_user?.walks ?? walksCompleted).toString(), onTap: () => _onStatsCardTap('Walks'))),
     ]);
   }
-  Widget _buildSocialImpactCard() { return SocialImpactCard(amount: (_user?.earnings ?? socialImpact), onTap: _onSocialImpactTap); }
+  Widget _buildSocialImpactCard() {
+    double baseAmount = (_user?.earnings ?? socialImpact).toDouble();
+
+    double calculatedAmount = _isWalker
+        ? baseAmount * 0.98
+        : baseAmount * 0.02;
+
+    return SocialImpactCard(
+      amount: calculatedAmount.toInt(),
+      onTap: _onSocialImpactTap,
+    );
+  }
   Widget _buildActionButtons() { return Column(children: [ ActionButton(text: _isWalker ? 'Incoming Requests' : 'Find a Walker', color: const Color(0xFF00E676), textColor: Colors.black, onPressed: _isWalker ? _onIncomingRequestPressed : _onFindWalkerPressed), const SizedBox(height: 16), ActionButton(text: 'My Walks', color: Colors.white, textColor: Colors.black, borderColor: Colors.grey[300], onPressed: _onViewHistoryPressed)]); }
 
   // --- [MODIFICATION] ---
