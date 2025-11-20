@@ -6,27 +6,27 @@
 
 ## 👥 Team Details
 **Team Name:** localhost:6900  
-**Members:**  
-- Yashendra  
-- Omkar Sanap  
-- Samarth Agarwal  
+**Members:**
+- Omkar Sanap
+- Samarth Agarwal
+- Yashendra
 
 ---
 
 ## 📘 Table of Contents
-1. [About the Project](#about-the-project)  
-2. [App Concept](#app-concept)  
-3. [Key Features](#key-features)  
-4. [Technology Stack](#technology-stack)  
-5. [Project Structure](#project-structure)  
-6. [Installation & Setup](#installation--setup)  
-7. [Firebase Configuration](#firebase-configuration)  
-8. [Core Modules](#core-modules)  
-9. [App Flow](#app-flow)  
-10. [Screenshots (Optional)](#screenshots-optional)  
-11. [How to Contribute](#how-to-contribute)  
-12. [License & Credits](#license--credits)  
-13. [Contact & Support](#contact--support)
+1. [About the Project](#-about-the-project)
+2. [App Concept](#-app-concept)
+3. [Key Features](#-key-features)
+4. [Technology Stack](#-technology-stack)
+5. [Installation & Setup](#-installation--setup)
+6. [Firebase Configuration](#-firebase-configuration)
+7. [Core Modules](#-core-modules)
+8. [App Flow](#-app-flow)
+9. [Presentation](#-presentation--demo)
+10. [Screenshots](#-screenshots)
+11. [How to Contribute](#-how-to-contribute)
+12. [License & Credits](#-license--credits)
+13. [Contact & Support](#-contact--support)
 
 ---
 
@@ -62,9 +62,13 @@ A **Walking Companion Platform for a Cause** — where every walk becomes an act
 - SOS / Emergency Alerts  
 - Ratings & Reviews  
 - Chat Module   
-- Walk History & Analytics Dashboard  
+- Walk History & Analytics Dashboard
+- **Group Walks:** Walkers can schedule and host community walking events for multiple Wanderers.
+- **Dynamic Fare Calculation:** Transparent, itemized fare summaries are provided post-walk.
 
 ✅ **Security & Trust:**
+- **Intelligent Walker Matching:** Profiles display a Best Match indicator for highly compatible pairings.
+- **Fraud Prevention:** Automatic restriction for users with unresolved payment issues.
 - Role-based access control  
 - Verified profiles & ID validation  
 - Background checks for Walkers  
@@ -81,49 +85,6 @@ A **Walking Companion Platform for a Cause** — where every walk becomes an act
 | **Notifications** | Firebase Cloud Messaging |
 | **State Management** | Provider / Riverpod |
 | **Version Control** | GitHub (Private Repository) |
-
----
-
-## 🗂 Project Structure
-```
-lib/
-│
-├── main.dart
-├── screens/
-│   ├── auth/
-│   │   ├── sign_in_screen.dart
-│   │   └── sign_up_screen.dart
-│   ├── walker/
-│   │   ├── walker_dashboard.dart
-│   │   ├── active_walk_screen.dart
-│   │   └── walk_summary_screen.dart
-│   ├── wanderer/
-│   │   ├── request_walk_screen.dart
-│   │   └── walk_summary__screen.dart
-│   │   └── payment__screen.dart
-│   ├── common/
-│   │   ├── profile_screen.dart
-│   │   ├── walk_history_screen.dart
-│
-├── models/
-│   ├── incoming_requests_model.dart
-│   ├── walk_request.dart
-│   └── walker_profile.dart
-│
-├── services/
-│   ├── firestore_service.dart
-│   ├── auth_service.dart
-│   ├── payment_service.dart
-│   └── location_service.dart
-│
-├── utils/
-│   ├── constants.dart
-│   └── helpers.dart
-│
-└── widgets/
-    ├── custom_button.dart
-    └── info_card.dart
-```
 
 ---
 
@@ -219,6 +180,15 @@ flutter run
    - A detailed summary (date, distance, duration, total cost, and partner rating) is stored in **Walk History**.  
    - Users can view past walks and earnings (for Walkers) in their dashboards.
  
+---
+
+## 🎬 Presentation 
+
+The full feature overview and demonstration of the application:
+
+**Feature Overview PPT:** https://drive.google.com/file/d/1ulNPnsohvbAqMu77AO-VjfObuZ0vhLg_/view?usp=sharing
+
+
 ---
 
 ## 🖼 Screenshots 
