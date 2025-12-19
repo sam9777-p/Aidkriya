@@ -1,10 +1,12 @@
-// create_group_walk_screen.dart
+
 import 'package:aidkriya_walker/backend/walk_request_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:intl/intl.dart';
+
+import '../../home_screen.dart';
 
 class CreateGroupWalkScreen extends StatefulWidget {
   const CreateGroupWalkScreen({super.key});
@@ -76,8 +78,6 @@ class _CreateGroupWalkScreenState extends State<CreateGroupWalkScreen> {
           'fullName': data['fullName'] ?? 'Walker',
           'imageUrl': data['imageUrl'],
         };
-        // setState not strictly required here (only used before submission),
-        // but it's okay to call to reflect if UI wants to show walker info later.
         if (mounted) setState(() {});
       }
     } catch (e) {
@@ -169,7 +169,14 @@ class _CreateGroupWalkScreenState extends State<CreateGroupWalkScreen> {
               backgroundColor: Colors.green,
             ),
           );
-          Navigator.pop(context);
+
+          // [FIX] Replaced Navigator.pop with pushAndRemoveUntil
+          // This resets the app to the Home Screen (index 0)
+          // avoiding the black screen caused by popping a bottom nav tab.
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (context) => const HomeScreen()),
+                (Route<dynamic> route) => false,
+          );
         }
       } else {
         _showError("Failed to create walk. Service returned null.");
@@ -195,7 +202,6 @@ class _CreateGroupWalkScreenState extends State<CreateGroupWalkScreen> {
   Widget build(BuildContext context) {
     const green = Color(0xFF6BCBA6);
 
-    // Border and style used for all fields (functionality unchanged)
     final inputBorder = OutlineInputBorder(
       borderRadius: BorderRadius.circular(12),
       borderSide: BorderSide(color: Colors.grey.shade400),
@@ -206,7 +212,6 @@ class _CreateGroupWalkScreenState extends State<CreateGroupWalkScreen> {
       borderSide: const BorderSide(color: green, width: 2),
     );
 
-    // animation params for Option A (Scale + Elevation)
     const Duration animDuration = Duration(milliseconds: 180);
     const double focusedScale = 1.02;
     const double unfocusedScale = 1.0;
@@ -252,7 +257,7 @@ class _CreateGroupWalkScreenState extends State<CreateGroupWalkScreen> {
         backgroundColor: Colors.white,
         centerTitle: true,
         title: const Text(
-          'Create Group Walk', // Keep user's new title
+          'Create Group Walk',
           style: TextStyle(
             color: Colors.black,
             fontSize: 20,
@@ -263,16 +268,10 @@ class _CreateGroupWalkScreenState extends State<CreateGroupWalkScreen> {
       body: Form(
         key: _formKey,
         child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(
-            16,
-            60,
-            16,
-            16,
-          ), // keep content below status bar
+          padding: const EdgeInsets.fromLTRB(16, 60, 16, 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // TITLE - animated independent card
               _animatedInputCard(
                 focusNode: _titleFocus,
                 child: Padding(
@@ -294,14 +293,13 @@ class _CreateGroupWalkScreenState extends State<CreateGroupWalkScreen> {
                       floatingLabelStyle: const TextStyle(color: green),
                     ),
                     validator: (val) =>
-                        val!.isEmpty ? 'Please enter a title' : null,
+                    val!.isEmpty ? 'Please enter a title' : null,
                   ),
                 ),
               ),
 
               const SizedBox(height: 8),
 
-              // Row with two independent animated cards (each animates separately — Option 3)
               Row(
                 children: [
                   Expanded(
@@ -332,7 +330,7 @@ class _CreateGroupWalkScreenState extends State<CreateGroupWalkScreen> {
                           ),
                           keyboardType: TextInputType.number,
                           validator: (val) =>
-                              (double.tryParse(val ?? '0') ?? 0) <= 0
+                          (double.tryParse(val ?? '0') ?? 0) <= 0
                               ? 'Price must be > 0'
                               : null,
                         ),
@@ -362,7 +360,7 @@ class _CreateGroupWalkScreenState extends State<CreateGroupWalkScreen> {
                           ),
                           keyboardType: TextInputType.number,
                           validator: (val) =>
-                              (int.tryParse(val ?? '0') ?? 0) <= 0
+                          (int.tryParse(val ?? '0') ?? 0) <= 0
                               ? 'Must be at least 1'
                               : null,
                         ),
@@ -406,17 +404,17 @@ class _CreateGroupWalkScreenState extends State<CreateGroupWalkScreen> {
                   onMapCreated: _onMapCreated,
                   onTap: _onMapTap,
                   initialCameraPosition: const CameraPosition(
-                    target: LatLng(23.7957, 86.4304), // Default to Dhanbad
+                    target: LatLng(23.7957, 86.4304),
                     zoom: 12,
                   ),
                   markers: _meetingPoint == null
                       ? {}
                       : {
-                          Marker(
-                            markerId: const MarkerId('meetingPoint'),
-                            position: _meetingPoint!,
-                          ),
-                        },
+                    Marker(
+                      markerId: const MarkerId('meetingPoint'),
+                      position: _meetingPoint!,
+                    ),
+                  },
                 ),
               ),
 
@@ -435,9 +433,9 @@ class _CreateGroupWalkScreenState extends State<CreateGroupWalkScreen> {
                 label: _isLoading
                     ? const CircularProgressIndicator(color: Colors.white)
                     : const Text(
-                        'Create Walk Event',
-                        style: TextStyle(fontSize: 16),
-                      ),
+                  'Create Walk Event',
+                  style: TextStyle(fontSize: 16),
+                ),
               ),
             ],
           ),
